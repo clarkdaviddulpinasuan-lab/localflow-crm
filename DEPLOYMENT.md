@@ -54,9 +54,11 @@ The repo includes `vercel.json` for SPA routing:
 ### Auto-deploy from GitHub (recommended)
 The repo includes a GitHub Action (`.github/workflows/deploy.yml`) that builds, tests, and deploys to Vercel production on every push to `main`. It only needs one secret:
 
-1. In **Vercel → Settings → Tokens**, create a token with the **Deploy** scope.
-2. In **GitHub → repo → Settings → Actions secrets**, add a secret named `VERCEL_TOKEN` with that value.
+1. In **Vercel → Settings → Tokens**, create a **fresh** token with the **Deploy** scope. Use that exact token value — an old, revoked, or expired token will fail with `Error: The token provided via --token argument is not valid`.
+2. In **GitHub → repo → Settings → Secrets and variables → Actions → Repository secrets**, add a secret named `VERCEL_TOKEN` with that value.
 3. Push to `main` — the workflow runs tests then deploys.
+
+If the workflow fails at the deploy step with a token error, regenerate a new token in Vercel and update the `VERCEL_TOKEN` secret — no code change is needed.
 
 If you haven't imported the project to Vercel yet, do that first (see below), then add the token.
 
