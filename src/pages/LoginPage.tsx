@@ -4,6 +4,7 @@ import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
 import { useAuth } from '@/contexts/AuthContext'
+import { isDemoMode } from '@/lib/supabase'
 
 interface LocationState {
   from?: { pathname?: string }
@@ -93,12 +94,14 @@ export function LoginPage() {
           </Link>
         </p>
 
-        <div className="mt-6 text-center bg-info-50 border border-info-100 rounded-lg px-4 py-3">
-          <p className="text-xs text-info-700">
-            <span className="font-semibold">Demo mode is active.</span> Authentication will be
-            enabled once Supabase is connected.
-          </p>
-        </div>
+        {isDemoMode() && (
+          <div className="mt-6 text-center bg-info-50 border border-info-100 rounded-lg px-4 py-3">
+            <p className="text-xs text-info-700">
+              <span className="font-semibold">Demo mode is active.</span> Authentication will be
+              enabled once Supabase is connected.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
