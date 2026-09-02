@@ -49,6 +49,17 @@ The repo includes `vercel.json` for SPA routing:
 { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
 ```
 
+> **Public prefix note:** `VITE_SUPABASE_ANON_KEY` uses the `sb_publishable_` prefix. This is **intentional** — it tells Supabase's JS client the anon key is approved for browser use. Do not strip the prefix or rename the variable; doing so breaks the front-end client or exposes a secret key.
+
+### Auto-deploy from GitHub (recommended)
+The repo includes a GitHub Action (`.github/workflows/deploy.yml`) that builds, tests, and deploys to Vercel production on every push to `main`. It only needs one secret:
+
+1. In **Vercel → Settings → Tokens**, create a token with the **Deploy** scope.
+2. In **GitHub → repo → Settings → Actions secrets**, add a secret named `VERCEL_TOKEN` with that value.
+3. Push to `main` — the workflow runs tests then deploys.
+
+If you haven't imported the project to Vercel yet, do that first (see below), then add the token.
+
 ### Via the dashboard
 1. Push to GitHub, then Vercel → **Add New Project** → import your repo.
 2. Framework preset: **Vite** (auto-detected). Build command `npm run build`, output `dist`.
