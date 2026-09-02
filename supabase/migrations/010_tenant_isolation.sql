@@ -22,7 +22,7 @@ begin
   values (
     case
       when first_name = '' then 'My Business'
-      else first_name || ''''s Business'
+      else first_name || '''s Business'
     end,
     'other'
   )
