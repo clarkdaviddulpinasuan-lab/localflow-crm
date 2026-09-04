@@ -32,3 +32,6 @@ coverage
 
 # Local dev server output
 dev-out.txt
+
+# Supabase CLI local artifacts
+supabase/.temp/
