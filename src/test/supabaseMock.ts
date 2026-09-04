@@ -273,7 +273,10 @@ export const supabaseMock = {
   },
 }
 
-type InvokeSignature = (fn: string, opts?: { body?: unknown }) => Promise<{ data: unknown; error: null }>
+type InvokeSignature = (
+  fn: string,
+  opts?: { body?: unknown }
+) => Promise<{ data: unknown; error: unknown }>
 
 let invokeImpl: InvokeSignature = async () => ({ data: { ok: true }, error: null })
 

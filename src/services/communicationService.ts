@@ -53,11 +53,49 @@ async function markFailed(id: string, errorMessage: string): Promise<void> {
 }
 
 /**
+ * Surface the real reason an Edge Function call failed.
+ *
+ * `functions.invoke()` resolves with an `error` rather than throwing, and for a
+ * non-2xx response that error only says "returned a non-2xx status code" — the
+ * useful message is the `{ ok: false, error }` body our functions send back, on
+ * `error.context`. An undeployed function lands here too (404), which is how a
+ * missing deployment gets reported instead of passing silently.
+ */
+async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const context = (error as { context?: unknown } | null)?.context
+  if (context instanceof Response) {
+    try {
+      const body = (await context.clone().json()) as { error?: unknown }
+      if (body?.error) return String(body.error)
+    } catch {
+      /* body was not JSON — fall through to the error's own message */
+    }
+  }
+  return messageFromError(error as { message?: string } | null, fallback)
+}
+
+/**
+ * Throw when the call never reached the function (network failure, missing
+ * deployment, non-2xx). A function that ran and reported a delivery failure is
+ * a different case: it has already written `failed` + `error` onto the row, so
+ * callers read the outcome back from there rather than from an exception.
+ */
+async function assertEdgeReached(
+  result: { data: unknown; error: unknown },
+  fallback: string
+): Promise<void> {
+  if (result.error) throw new Error(await edgeErrorMessage(result.error, fallback))
+}
+
+/**
  * Hand the queued communication to the send-message Edge Function, which ships
  * it through the configured provider and records the delivery result on the row.
  */
 export async function dispatchCommunication(id: string): Promise<void> {
-  await supabase.functions.invoke('send-message', { body: { communication_id: id } })
+  const result = await supabase.functions.invoke('send-message', {
+    body: { communication_id: id },
+  })
+  await assertEdgeReached(result, 'Failed to send message.')
 }
 
 /**
@@ -120,5 +158,12 @@ export async function sendCommunication(input: {
  * customer row is required and nothing is persisted to the communications ledger.
  */
 export async function sendTestEmail(input: { subject: string; body: string; to: string }): Promise<void> {
-  await supabase.functions.invoke('send-test-email', { body: input })
+  const result = await supabase.functions.invoke('send-test-email', { body: input })
+  await assertEdgeReached(result, 'Failed to send test email.')
+  // Nothing is persisted for a test send, so the response is the only place a
+  // provider rejection can surface — unlike dispatchCommunication, it must throw.
+  const data = result.data as { ok?: boolean; error?: unknown } | null
+  if (data?.ok === false) {
+    throw new Error(data.error ? String(data.error) : 'Failed to send test email.')
+  }
 }

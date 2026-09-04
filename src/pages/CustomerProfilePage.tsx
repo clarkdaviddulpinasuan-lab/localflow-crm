@@ -65,6 +65,7 @@ export function CustomerProfilePage() {
   const [messageTemplateId, setMessageTemplateId] = useState('')
   const [messageSubject, setMessageSubject] = useState('')
   const [messageBody, setMessageBody] = useState('')
+  const [messageError, setMessageError] = useState<string | null>(null)
   const [businessName, setBusinessName] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -179,6 +180,7 @@ export function CustomerProfilePage() {
     setMessageTemplateId('')
     setMessageSubject('')
     setMessageBody('')
+    setMessageError(null)
     setMessageOpen(true)
   }
 
@@ -198,6 +200,7 @@ export function CustomerProfilePage() {
   async function handleSendMessage() {
     if (!customer || !messageBody.trim()) return
     setSaving(true)
+    setMessageError(null)
     try {
       await sendCommunication({
         customer_id: customer.id,
@@ -207,6 +210,9 @@ export function CustomerProfilePage() {
         template_id: messageTemplateId || undefined,
       })
       setMessageOpen(false)
+      await refreshCommunications()
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : 'Could not send the message.')
       await refreshCommunications()
     } finally {
       setSaving(false)
@@ -649,6 +655,11 @@ export function CustomerProfilePage() {
             placeholder="Type your message…"
             rows={5}
           />
+          {messageError && (
+            <p role="alert" className="text-sm text-danger-600">
+              Could not send: {messageError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setMessageOpen(false)}>Cancel</Button>
             <Button onClick={handleSendMessage} loading={saving} disabled={!messageBody.trim()}>Send</Button>

@@ -111,6 +111,56 @@ describe('communication service', () => {
     expect(seen).toHaveBeenCalledWith('send-message', { body: { communication_id: 'comm-1' } })
   })
 
+  it('dispatchCommunication throws when the edge function is not deployed', async () => {
+    // supabase-js resolves with an error rather than throwing, so an undeployed
+    // function used to pass silently and leave the row stuck on 'pending'.
+    setFunctionsInvoke(async () => ({
+      data: null,
+      error: Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+        context: new Response(JSON.stringify({ error: 'Function not found' }), { status: 404 }),
+      }),
+    }))
+    await expect(dispatchCommunication('comm-1')).rejects.toThrow('Function not found')
+  })
+
+  it('dispatchCommunication does not throw when the function recorded the failure itself', async () => {
+    // The function ran and wrote failed + error onto the row, so the outcome is
+    // read back from the ledger rather than raised here.
+    setFunctionsInvoke(async () => ({
+      data: { ok: false, error: 'Customer has no email address.' },
+      error: null,
+    }))
+    await expect(dispatchCommunication('comm-1')).resolves.toBeUndefined()
+  })
+
+  it('marks the row failed and surfaces the reason when dispatch fails', async () => {
+    setFunctionsInvoke(async () => ({
+      data: null,
+      error: Object.assign(new Error('non-2xx'), {
+        context: new Response(JSON.stringify({ error: 'No verified sender address set.' }), {
+          status: 400,
+        }),
+      }),
+    }))
+    await expect(
+      sendCommunication({ customer_id: 'cust-001', channel: 'email', subject: 'Hi', body: 'Hello' })
+    ).rejects.toThrow('No verified sender address set.')
+
+    const row = getTable('communications').at(-1) as { status: string; error: string }
+    expect(row.status).toBe('failed')
+    expect(row.error).toBe('No verified sender address set.')
+  })
+
+  it('sendTestEmail surfaces the provider error instead of reporting success', async () => {
+    setFunctionsInvoke(async () => ({
+      data: { ok: false, error: 'Resend rejected the sender domain.' },
+      error: null,
+    }))
+    await expect(sendTestEmail({ to: 'a@b.com', subject: 'T', body: 'B' })).rejects.toThrow(
+      'Resend rejected the sender domain.'
+    )
+  })
+
   it('listCommunications returns rows from the ledger', async () => {
     const res = await listCommunications({ filters: { customer_id: 'cust-001' }, perPage: 10 })
     const rows = res.data as Communication[]
