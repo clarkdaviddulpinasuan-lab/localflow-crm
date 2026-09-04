@@ -84,7 +84,7 @@ function SidebarContent({ onClose }: { onClose: () => void }) {
               {profile ? `${profile.first_name} ${profile.last_name}` : 'Local Flow'}
             </p>
             <p className="truncate text-xs text-white/60">
-              {business?.name ?? 'Demo Business'}
+              {business?.name ?? 'LocalFlow Workspace'}
             </p>
           </div>
           <button

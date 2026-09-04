@@ -24,6 +24,8 @@ interface OrderFormValues {
   booking_id: string
   items: string
   description: string
+  start_date: string
+  end_date: string
   total: number
   payment_status: PaymentStatus
   status: OrderStatus
@@ -60,6 +62,8 @@ export function OrderForm({
     booking_id: defaultBookingId ?? initial?.booking_id ?? '',
     items: initial?.items ?? '',
     description: initial?.description ?? '',
+    start_date: initial?.start_date ?? '',
+    end_date: initial?.end_date ?? '',
     total: initial?.total ?? 0,
     payment_status: initial?.payment_status ?? 'pending',
     status: initial?.status ?? 'new',
@@ -85,6 +89,9 @@ export function OrderForm({
     if (!values.customer_id) next.customer_id = 'Please select a customer'
     if (!values.items.trim()) next.items = 'Items are required'
     if (values.total < 0) next.total = 'Total cannot be negative'
+    if (values.end_date && values.start_date && values.end_date < values.start_date) {
+      next.end_date = 'End date can\'t be before start date'
+    }
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -153,6 +160,26 @@ export function OrderForm({
           placeholder="Optional details about the order"
           rows={3}
         />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            id="start_date"
+            label="Start date"
+            type="date"
+            value={values.start_date}
+            onChange={(e) => set('start_date', e.target.value)}
+            hint="Optional — when this order applies"
+          />
+          <Input
+            id="end_date"
+            label="End date"
+            type="date"
+            value={values.end_date}
+            onChange={(e) => set('end_date', e.target.value)}
+            error={errors.end_date}
+            hint="Optional — leave blank for one day"
+          />
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Input

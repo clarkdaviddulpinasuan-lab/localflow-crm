@@ -48,8 +48,8 @@ The migrations are **idempotent** — you can run them multiple times safely.
 | `profiles` | User profiles linked to `auth.users` and a business; each has a `role` |
 | `customers` | Customer records (contact info, type, status, spend, visits) |
 | `customer_notes` | Notes attached to customers |
-| `bookings` | Reservations/appointments (resource, date, time window, guests, status, payment) |
-| `orders` | Sales orders (number, status, payment, total) |
+| `bookings` | Reservations/appointments (resource, date + optional end_date span, time window, guests, status, payment) |
+| `orders` | Sales orders (number, optional start/end dates, status, payment, total) |
 | `tasks` | To-dos with due date, priority, status, assignee |
 | `leads` | Sales pipeline leads with stage and estimated value |
 | `activities` | Immutable activity/audit log entries |

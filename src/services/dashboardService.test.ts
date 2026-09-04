@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock } from '@/test/supabaseMock'
 import {
   computeKpis,
   revenueTrend,
@@ -14,7 +15,7 @@ import {
 
 describe('dashboard service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('computes five KPIs with required fields', async () => {
@@ -32,7 +33,6 @@ describe('dashboard service', () => {
     const kpis = await computeKpis()
     const labels = kpis.map((k) => k.label)
     expect(labels.some((l) => l.includes('Revenue'))).toBe(true)
-    // The customer KPI label is config-driven (resort config uses "Guests").
     expect(labels.some((l) => l === 'Customers' || l === 'Guests')).toBe(true)
     expect(labels.some((l) => l.includes('Repeat'))).toBe(true)
   })

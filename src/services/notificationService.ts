@@ -1,16 +1,8 @@
-import { getStore, updateStore, nextId } from '@/services/demoStore'
-import { isDemoMode, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { getCurrentBusinessId, messageFromError } from '@/lib/dataClient'
 import type { Notification } from '@/types'
 
 export async function listNotifications(limit = 50): Promise<Notification[]> {
-  if (isDemoMode()) {
-    return getStore()
-      .notifications.slice()
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .slice(0, limit)
-  }
-
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('notifications')
@@ -23,8 +15,6 @@ export async function listNotifications(limit = 50): Promise<Notification[]> {
 }
 
 export async function unreadCount(): Promise<number> {
-  if (isDemoMode()) return getStore().notifications.filter((n) => !n.read).length
-
   const businessId = await getCurrentBusinessId()
   const { count, error } = await supabase
     .from('notifications')
@@ -36,13 +26,6 @@ export async function unreadCount(): Promise<number> {
 }
 
 export async function markAllRead(): Promise<void> {
-  if (isDemoMode()) {
-    updateStore((s) => {
-      s.notifications = s.notifications.map((n) => ({ ...n, read: true }))
-    })
-    return
-  }
-
   const businessId = await getCurrentBusinessId()
   const { error } = await supabase
     .from('notifications')
@@ -53,13 +36,6 @@ export async function markAllRead(): Promise<void> {
 }
 
 export async function markRead(id: string): Promise<void> {
-  if (isDemoMode()) {
-    updateStore((s) => {
-      s.notifications = s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
-    })
-    return
-  }
-
   const businessId = await getCurrentBusinessId()
   const { error } = await supabase
     .from('notifications')
@@ -69,24 +45,6 @@ export async function markRead(id: string): Promise<void> {
   if (error) throw new Error(messageFromError(error, 'Unable to update notification.'))
 }
 
-// Demo-store helper. The public `notify()` below persists notifications in both
-// demo and Supabase modes and is the single call sites should use.
-export function createNotification(
-  input: Omit<Notification, 'id' | 'read' | 'created_at'>
-): Notification {
-  const notification: Notification = {
-    id: nextId('notif'),
-    ...input,
-    read: false,
-    created_at: new Date().toISOString(),
-  }
-  updateStore((s) => {
-    s.notifications.unshift(notification)
-  })
-  return notification
-}
-
-// Public helper used across the app to record notifications even in prod mode.
 export interface NotificationInput {
   user_id: string
   business_id: string
@@ -98,10 +56,6 @@ export interface NotificationInput {
 }
 
 export async function notify(data: NotificationInput): Promise<void> {
-  if (isDemoMode()) {
-    createNotification(data)
-    return
-  }
   await supabase.from('notifications').insert({
     user_id: data.user_id,
     business_id: data.business_id,

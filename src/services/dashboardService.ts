@@ -1,6 +1,4 @@
 import { subDays, eachDayOfInterval, format, parseISO } from 'date-fns'
-import { getStore } from '@/services/demoStore'
-import { isDemo } from '@/lib/dataClient'
 import { listOrders } from '@/services/orderService'
 import { listBookings } from '@/services/bookingService'
 import { listTasks } from '@/services/taskService'
@@ -98,19 +96,12 @@ export async function revenueTrend(range: TrendRange): Promise<DailyPoint[]> {
   const start = subDays(end, range - 1)
   const days = eachDayOfInterval({ start, end })
 
-  let orders, bookings
-  if (isDemo()) {
-    const s = getStore()
-    orders = s.orders
-    bookings = s.bookings
-  } else {
-    const [o, b] = await Promise.all([
-      listOrders({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' }),
-      listBookings({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' }),
-    ])
-    orders = o.data
-    bookings = b.data
-  }
+  const [o, b] = await Promise.all([
+    listOrders({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' }),
+    listBookings({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' }),
+  ])
+  const orders = o.data
+  const bookings = b.data
 
   const ordersFiltered = orders.filter(
     (o) => o.status !== 'cancelled' && parseISO(o.created_at) >= start
@@ -146,13 +137,8 @@ export async function customerGrowth(range: TrendRange): Promise<DailyPoint[]> {
   const start = subDays(end, range - 1)
   const days = eachDayOfInterval({ start, end })
 
-  let customers
-  if (isDemo()) {
-    customers = getStore().customers
-  } else {
-    const c = await listCustomers({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' })
-    customers = c.data
-  }
+  const c = await listCustomers({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' })
+  const customers = c.data
 
   let cumulative = customers.filter((c) => parseISO(c.created_at) < start).length
   const byDay = new Map<string, number>()
@@ -168,13 +154,8 @@ export async function customerGrowth(range: TrendRange): Promise<DailyPoint[]> {
 }
 
 export async function bookingStatusCounts(): Promise<{ name: string; value: number }[]> {
-  let bookings
-  if (isDemo()) {
-    bookings = getStore().bookings
-  } else {
-    const b = await listBookings({ perPage: 10000 })
-    bookings = b.data
-  }
+  const b = await listBookings({ perPage: 10000 })
+  const bookings = b.data
   const counts = new Map<string, number>()
   bookings.forEach((b) => counts.set(b.status, (counts.get(b.status) ?? 0) + 1))
   const order = ['pending', 'confirmed', 'checked_in', 'completed', 'cancelled', 'no_show']
@@ -183,30 +164,14 @@ export async function bookingStatusCounts(): Promise<{ name: string; value: numb
     .map((k) => ({ name: k.replace('_', ' '), value: counts.get(k) ?? 0 }))
 }
 
-// Fetch all business records once (demo or supabase) and compute the metric
-// set with real period-over-period comparisons.
+// Fetch all business records once and compute the metric set with real
+// period-over-period comparisons.
 export async function computeMetricSet(range: TrendRange = 30): Promise<MetricSet> {
   const [customers, bookings, orders, tasks, revenuePoints] = await Promise.all([
-    (async () => {
-      if (isDemo()) return getStore().customers
-      const c = await listCustomers({ perPage: 10000 })
-      return c.data
-    })(),
-    (async () => {
-      if (isDemo()) return getStore().bookings
-      const b = await listBookings({ perPage: 10000 })
-      return b.data
-    })(),
-    (async () => {
-      if (isDemo()) return getStore().orders
-      const o = await listOrders({ perPage: 10000 })
-      return o.data
-    })(),
-    (async () => {
-      if (isDemo()) return getStore().tasks
-      const t = await listTasks({ perPage: 10000 })
-      return t.data
-    })(),
+    (async () => (await listCustomers({ perPage: 10000 })).data)(),
+    (async () => (await listBookings({ perPage: 10000 })).data)(),
+    (async () => (await listOrders({ perPage: 10000 })).data)(),
+    (async () => (await listTasks({ perPage: 10000 })).data)(),
     revenueTrend(range),
   ])
 
@@ -380,9 +345,9 @@ export async function computeKpis(range: TrendRange = 30): Promise<Kpi[]> {
 export async function businessHealth() {
   const m = await computeMetricSet(30)
   const [customers, tasks, bookings] = await Promise.all([
-    (async () => { if (isDemo()) return getStore().customers; const c = await listCustomers({ perPage: 10000 }); return c.data })(),
-    (async () => { if (isDemo()) return getStore().tasks; const t = await listTasks({ perPage: 10000 }); return t.data })(),
-    (async () => { if (isDemo()) return getStore().bookings; const b = await listBookings({ perPage: 10000 }); return b.data })(),
+    (async () => (await listCustomers({ perPage: 10000 })).data)(),
+    (async () => (await listTasks({ perPage: 10000 })).data)(),
+    (async () => (await listBookings({ perPage: 10000 })).data)(),
   ])
   const repeatCustomers = customers.filter((c2) => c2.visit_count > 1).length
   const retention = customers.length ? Math.round((repeatCustomers / customers.length) * 100) : 0
@@ -394,11 +359,11 @@ export async function businessHealth() {
 // ---- NEW: Needs Attention ----
 export async function needsAttention(limit = 8): Promise<NeedsAttentionItem[]> {
   const [tasks, bookings, orders, customers, leads] = await Promise.all([
-    (async () => { if (isDemo()) return getStore().tasks; const t = await listTasks({ perPage: 10000 }); return t.data })(),
-    (async () => { if (isDemo()) return getStore().bookings; const b = await listBookings({ perPage: 10000 }); return b.data })(),
-    (async () => { if (isDemo()) return getStore().orders; const o = await listOrders({ perPage: 10000 }); return o.data })(),
-    (async () => { if (isDemo()) return getStore().customers; const c = await listCustomers({ perPage: 10000 }); return c.data })(),
-    (async () => { if (isDemo()) return getStore().leads; const l = await listLeads({ perPage: 10000 }); return l.data })(),
+    (async () => (await listTasks({ perPage: 10000 })).data)(),
+    (async () => (await listBookings({ perPage: 10000 })).data)(),
+    (async () => (await listOrders({ perPage: 10000 })).data)(),
+    (async () => (await listCustomers({ perPage: 10000 })).data)(),
+    (async () => (await listLeads({ perPage: 10000 })).data)(),
   ])
 
   const items: NeedsAttentionItem[] = []
@@ -529,13 +494,8 @@ export async function recentActivity(limit = 8) {
 }
 
 export async function monthlyOverview(): Promise<{ name: string; bookings: number; revenue: number }[]> {
-  let bookings
-  if (isDemo()) {
-    bookings = getStore().bookings
-  } else {
-    const b = await listBookings({ perPage: 10000 })
-    bookings = b.data
-  }
+  const b = await listBookings({ perPage: 10000 })
+  const bookings = b.data
   const months = new Map<string, { bookings: number; revenue: number }>()
   bookings.forEach((b) => {
     const key = format(parseISO(b.date + 'T00:00:00'), 'MMM')

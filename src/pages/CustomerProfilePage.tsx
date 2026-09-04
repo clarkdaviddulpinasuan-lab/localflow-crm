@@ -21,18 +21,24 @@ import { Modal } from '@/components/ui/Modal'
 import { Textarea, Input, Select } from '@/components/ui/Field'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { CustomerForm, type CustomerFormData } from '@/features/customers/CustomerForm'
-import { formatCurrency, formatNumber } from '@/utils/format'
+import { formatCurrency, formatNumber, formatDateSpan } from '@/utils/format'
 import { getCustomer, getCustomerNotes, addCustomerNote, updateCustomer } from '@/services/customerService'
 import { listBookings } from '@/services/bookingService'
 import { listOrders } from '@/services/orderService'
 import { listFollowUps, createFollowUp, completeFollowUp, skipFollowUp } from '@/services/followUpService'
-import { analyzeCustomers, SEGMENT_DEFS, type CustomerSegment } from '@/services/segments'
 import { listCommunications, sendCommunication } from '@/services/communicationService'
 import { listTemplates } from '@/services/templateService'
 import { getBusiness } from '@/services/settingsService'
 import { getCustomerActivities } from '@/services/activityService'
-import type { Customer, Booking, Order, Activity, FollowUp, Communication, MessageTemplate, TemplateChannel } from '@/types'
+import type { Customer, Booking, Order, Activity, FollowUp, Communication, CommunicationStatus, MessageTemplate, TemplateChannel } from '@/types'
 import { useBusiness } from '@/contexts/BusinessContext'
+
+const COMMUNICATION_STATUS_BADGE: Record<CommunicationStatus, { variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info'; label: string }> = {
+  delivered: { variant: 'success', label: 'Delivered' },
+  pending: { variant: 'warning', label: 'Sending…' },
+  sent: { variant: 'primary', label: 'Sent' },
+  failed: { variant: 'danger', label: 'Failed' },
+}
 
 export function CustomerProfilePage() {
   const { id } = useParams<{ id: string }>()
@@ -44,7 +50,6 @@ export function CustomerProfilePage() {
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
   const [communications, setCommunications] = useState<Communication[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
-  const [segment, setSegment] = useState<CustomerSegment | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -81,12 +86,11 @@ export function CustomerProfilePage() {
       setCustomer(customer ?? null)
       setLoadError(customer ? null : 'not_found')
       if (!customer) return
-      const [notesRes, bookingsRes, ordersRes, followRes, segs, activities, comms, tpls, biz] = await Promise.allSettled([
+      const [notesRes, bookingsRes, ordersRes, followRes, activities, comms, tpls, biz] = await Promise.allSettled([
         getCustomerNotes(customerId),
         listBookings({ filters: { customer_id: customerId }, perPage: 10 }),
         listOrders({ filters: { customer_id: customerId }, perPage: 10 }),
         listFollowUps({ filters: { customer_id: customerId }, perPage: 20 }),
-        analyzeCustomers(),
         getCustomerActivities(customerId, 20),
         listCommunications({ filters: { customer_id: customerId }, perPage: 20 }),
         listTemplates({ perPage: 100 }),
@@ -97,7 +101,6 @@ export function CustomerProfilePage() {
       if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value.data)
       if (ordersRes.status === 'fulfilled') setOrders(ordersRes.value.data)
       if (followRes.status === 'fulfilled') setFollowUps(followRes.value.data)
-      if (segs.status === 'fulfilled') setSegment(segs.value.customers.find((x) => x.id === customerId)?.segment ?? null)
       if (activities.status === 'fulfilled') setActivities(activities.value)
       if (comms.status === 'fulfilled') setCommunications(comms.value.data)
       if (tpls.status === 'fulfilled') setTemplates(tpls.value.data)
@@ -294,11 +297,6 @@ export function CustomerProfilePage() {
               </h1>
               <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
               <Badge variant="default">{customer.type.replace('_', ' ')}</Badge>
-              {segment && (
-                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${SEGMENT_DEFS[segment].chip}`}>
-                  {SEGMENT_DEFS[segment].label}
-                </span>
-              )}
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-sm text-surface-500">
               {customer.email && (
@@ -453,11 +451,21 @@ export function CustomerProfilePage() {
                 {communications.map((c) => (
                   <li key={c.id} className="rounded-lg border border-surface-100 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <Badge variant={c.channel === 'email' ? 'primary' : 'info'}>{c.channel === 'email' ? 'Email' : 'SMS'}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={c.channel === 'email' ? 'primary' : 'info'}>{c.channel === 'email' ? 'Email' : 'SMS'}</Badge>
+                        <Badge variant={COMMUNICATION_STATUS_BADGE[c.status].variant}>{COMMUNICATION_STATUS_BADGE[c.status].label}</Badge>
+                      </div>
                       <span className="text-xs text-surface-400">{new Date(c.sent_at).toLocaleDateString()}</span>
                     </div>
                     {c.subject && <p className="mt-2 text-sm font-medium text-surface-900">Re: {c.subject}</p>}
                     <p className="mt-1 text-sm text-surface-800 whitespace-pre-line">{c.body}</p>
+                    {c.status === 'failed' && c.error && <p className="mt-1 text-xs text-danger-600">{c.error}</p>}
+                    {c.delivered_at && (
+                      <p className="mt-1 text-xs text-surface-400">
+                        Delivered {new Date(c.delivered_at).toLocaleDateString()} via {c.provider === 'resend' ? 'Resend' : c.provider}
+                        {c.provider_message_id && ` • ${c.provider_message_id}`}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -476,7 +484,7 @@ export function CustomerProfilePage() {
                   <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border border-surface-100">
                     <div>
                       <p className="font-medium text-surface-900">{b.resource}</p>
-                      <p className="text-xs text-surface-500">{b.date} • {b.start_time}</p>
+                      <p className="text-xs text-surface-500">{formatDateSpan(b.date, b.end_date)} • {b.start_time}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-surface-900">{formatCurrency(b.amount)}</span>
@@ -498,7 +506,7 @@ export function CustomerProfilePage() {
                   <div key={o.id} className="flex items-center justify-between p-3 rounded-lg border border-surface-100">
                     <div>
                       <p className="font-medium text-surface-900">{o.items}</p>
-                      <p className="text-xs text-surface-500">{o.order_number}</p>
+                      <p className="text-xs text-surface-500">{o.order_number}{o.start_date ? ` • ${formatDateSpan(o.start_date, o.end_date)}` : ''}</p>
                       {o.booking_id && bookings.find((b) => b.id === o.booking_id) && (
                         <p className="text-xs mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 font-medium text-primary-700">
                           {(() => {

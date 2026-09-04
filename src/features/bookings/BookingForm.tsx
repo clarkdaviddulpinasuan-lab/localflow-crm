@@ -1,8 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea, FieldWrapper } from '@/components/ui/Field'
 import { Button } from '@/components/ui/Button'
+import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
+import { Combobox } from '@/components/ui/Combobox'
 import { useBusiness } from '@/contexts/BusinessContext'
+import { getActiveResources } from '@/services/resourceService'
 import type { Booking, BookingStatus, PaymentStatus } from '@/types'
 
 const statusOptions: { value: BookingStatus; label: string }[] = [
@@ -25,6 +28,7 @@ interface BookingFormValues {
   customer_id: string
   resource: string
   date: string
+  end_date: string
   start_time: string
   end_time: string
   guests: number
@@ -56,10 +60,12 @@ export function BookingForm({
   defaultCustomerId,
 }: BookingFormProps) {
   const { terminology } = useBusiness()
+  const [dbResources, setDbResources] = useState<{ name: string; color?: string | null }[]>([])
   const [values, setValues] = useState<BookingFormValues>({
     customer_id: defaultCustomerId ?? initial?.customer_id ?? '',
     resource: initial?.resource ?? '',
     date: initial?.date ?? new Date().toISOString().slice(0, 10),
+    end_date: initial?.end_date ?? '',
     start_time: initial?.start_time ?? '14:00',
     end_time: initial?.end_time ?? '12:00',
     guests: initial?.guests ?? 1,
@@ -70,9 +76,21 @@ export function BookingForm({
   })
   const [errors, setErrors] = useState<Partial<Record<keyof BookingFormValues, string>>>({})
 
+  useEffect(() => {
+    if (!open) return
+    getActiveResources()
+      .then((resources) => setDbResources(resources.map((r) => ({ name: r.name, color: r.color }))))
+      .catch(() => setDbResources([]))
+  }, [open])
+
   function set<K extends keyof BookingFormValues>(key: K, value: BookingFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
     setErrors((e) => ({ ...e, [key]: undefined }))
+  }
+
+  function handleRangeChange({ start, end }: DateRange) {
+    set('date', start ?? '')
+    set('end_date', end ?? '')
   }
 
   function validate(): boolean {
@@ -93,12 +111,19 @@ export function BookingForm({
     await onSave(values)
   }
 
-  const uniqueResources = Array.from(
-    new Set([
-      ...terminology.defaultResources,
-      ...(initial?.resource ? [initial.resource] : []),
-    ])
-  )
+  const resourceColors = useMemo(() => {
+    const map = new Map<string, string | null>()
+    dbResources.forEach((r) => map.set(r.name, r.color ?? null))
+    if (initial?.resource) map.set(initial.resource, null)
+    return map
+  }, [dbResources, initial])
+
+  const uniqueResources = useMemo(() => {
+    const names = new Set<string>()
+    dbResources.forEach((r) => names.add(r.name))
+    if (initial?.resource) names.add(initial.resource)
+    return Array.from(names)
+  }, [dbResources, initial])
 
   return (
     <Modal
@@ -120,51 +145,50 @@ export function BookingForm({
           options={[{ value: '', label: 'Select customer...' }, ...customerOptions]}
         />
 
-        <FieldWrapper label={`${terminology.resourceLabel} (or custom)`} required error={errors.resource}>
+        <FieldWrapper label={terminology.resourceLabel} required error={errors.resource}>
           <div className="flex flex-wrap gap-2 mb-2">
-            {uniqueResources.map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => set('resource', r)}
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                  values.resource === r
-                    ? 'bg-primary-50 border-primary-300 text-primary-700'
-                    : 'border-surface-200 text-surface-600 hover:bg-surface-50'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
+            {uniqueResources.map((r) => {
+              const color = resourceColors.get(r)
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => set('resource', r)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                    values.resource === r
+                      ? 'bg-primary-50 border-primary-300 text-primary-700'
+                      : 'border-surface-200 text-surface-600 hover:bg-surface-50'
+                  }`}
+                >
+                  {color && (
+                    <span
+                      className="inline-block h-2 w-2 rounded-full mr-1.5 -mb-px"
+                      style={{ backgroundColor: color }}
+                    />
+                  )}
+                  {r}
+                </button>
+              )
+            })}
           </div>
-          <Input
+          <Combobox
             id="resource"
             value={values.resource}
-            onChange={(e) => set('resource', e.target.value)}
-            placeholder={`e.g. ${terminology.defaultResources[0]}`}
+            onChange={(v) => set('resource', v)}
+            options={uniqueResources.map((r) => ({ value: r, label: r }))}
+            placeholder={`Search ${terminology.resourceLabel.toLowerCase()}...`}
+            emptyMessage={`No ${terminology.resourceLabel.toLowerCase()} matches`}
             className="mt-1"
           />
         </FieldWrapper>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            id="date"
-            label="Date"
-            type="date"
-            required
-            value={values.date}
-            onChange={(e) => set('date', e.target.value)}
-            error={errors.date}
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-surface-700">Dates</label>
+          <DateRangePicker
+            value={{ start: values.date || null, end: values.end_date || null }}
+            onChange={handleRangeChange}
           />
-          <Input
-            id="guests"
-            label="Guests"
-            type="number"
-            min={1}
-            value={values.guests}
-            onChange={(e) => set('guests', parseInt(e.target.value) || 1)}
-            error={errors.guests}
-          />
+          {errors.date && <p className="text-xs text-danger-600">{errors.date}</p>}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -185,18 +209,17 @@ export function BookingForm({
             onChange={(e) => set('end_time', e.target.value)}
           />
           <Input
-            id="amount"
-            label="Amount"
+            id="guests"
+            label="Guests"
             type="number"
-            min={0}
-            step="0.01"
-            value={values.amount}
-            onChange={(e) => set('amount', parseFloat(e.target.value) || 0)}
-            error={errors.amount}
+            min={1}
+            value={values.guests}
+            onChange={(e) => set('guests', parseInt(e.target.value) || 1)}
+            error={errors.guests}
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Select
             id="status"
             label="Status"
@@ -210,6 +233,16 @@ export function BookingForm({
             value={values.payment_status}
             onChange={(e) => set('payment_status', e.target.value as PaymentStatus)}
             options={paymentOptions}
+          />
+          <Input
+            id="amount"
+            label="Amount"
+            type="number"
+            min={0}
+            step="0.01"
+            value={values.amount}
+            onChange={(e) => set('amount', parseFloat(e.target.value) || 0)}
+            error={errors.amount}
           />
         </div>
 

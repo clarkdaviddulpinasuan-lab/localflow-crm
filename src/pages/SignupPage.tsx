@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
-import { isDemoMode, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export function SignupPage() {
   const navigate = useNavigate()
@@ -24,11 +24,6 @@ export function SignupPage() {
     }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
-      return
-    }
-
-    if (isDemoMode()) {
-      setError('Account creation is enabled once Supabase is connected.')
       return
     }
 

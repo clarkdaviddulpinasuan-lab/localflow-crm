@@ -16,6 +16,21 @@ export function getInitials(firstName: string, lastName: string): string {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
 }
 
+// "Sep 3, 2026" for a single date, "Sep 3 – 5, 2026" for a multi-day span.
+export function formatDateSpan(start: string, end?: string | null): string {
+  if (!start) return '—'
+  const startDate = new Date(start + 'T00:00:00')
+  if (end && end > start) {
+    const endDate = new Date(end + 'T00:00:00')
+    const sameMonth = startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear()
+    if (sameMonth) {
+      return `${startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString(undefined, { day: 'numeric', year: 'numeric' })}`
+    }
+    return `${startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+  }
+  return startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export function getGreeting(): string {
   const hour = new Date().getHours()
   if (hour < 12) return 'Good morning'

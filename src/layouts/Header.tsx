@@ -7,6 +7,7 @@ import { listNotifications, markAllRead, unreadCount } from '@/services/notifica
 import { openCommandPalette } from '@/lib/commandPalette'
 import type { Notification } from '@/types'
 import { cn } from '@/lib/cn'
+import { Spinner } from '@/components/ui/Spinner'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -133,7 +134,9 @@ export function Header({ onMenuClick }: HeaderProps) {
               </div>
               <div className="p-2 max-h-80 overflow-y-auto">
                 {notifLoading ? (
-                  <div className="px-3 py-3 text-center text-sm text-surface-500">Loading…</div>
+                  <div className="px-3 py-4 flex justify-center">
+                    <Spinner />
+                  </div>
                 ) : notifications.length === 0 ? (
                   <div className="px-3 py-3 text-center text-sm text-surface-500">
                     No new notifications

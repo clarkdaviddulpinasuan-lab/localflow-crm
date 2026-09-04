@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore, getStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock, getTable } from '@/test/supabaseMock'
 import {
   listOrders,
   createOrder,
@@ -10,21 +11,21 @@ import { listBookings } from '@/services/bookingService'
 
 describe('order service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('lists seeded orders for the demo business', async () => {
     const res = await listOrders({ perPage: 100 })
     expect(res.data.length).toBeGreaterThan(0)
-    expect(res.data.every((o) => o.business_id === getStore().business.id)).toBe(true)
+    expect(res.data.every((o) => o.business_id === 'biz-001')).toBe(true)
   })
 
   it('creates an order and persists a linked booking', async () => {
-    const customer = getStore().customers[0]
+    const customers = getTable('customers')
     const bookings = await listBookings({ perPage: 100 })
     const booking = bookings.data[0]
     const created = await createOrder({
-      customer_id: customer.id,
+      customer_id: customers[0].id as string,
       booking_id: booking.id,
       items: 'Test order with stay',
       total: 1200,
@@ -33,15 +34,15 @@ describe('order service', () => {
       staff_member: '',
     })
     expect(created.booking_id).toBe(booking.id)
-    expect(getStore().orders.some((o) => o.id === created.id)).toBe(true)
+    expect(getTable('orders').some((o) => o.id === created.id)).toBe(true)
   })
 
   it('filters orders by booking_id', async () => {
-    const customer = getStore().customers[0]
+    const customers = getTable('customers')
     const bookings = await listBookings({ perPage: 100 })
     const booking = bookings.data[0]
     await createOrder({
-      customer_id: customer.id,
+      customer_id: customers[0].id as string,
       booking_id: booking.id,
       items: 'Stay-linked order',
       total: 800,
@@ -55,11 +56,11 @@ describe('order service', () => {
   })
 
   it('updates and clears a booking link', async () => {
-    const customer = getStore().customers[0]
+    const customers = getTable('customers')
     const bookings = await listBookings({ perPage: 100 })
     const booking = bookings.data[0]
     const created = await createOrder({
-      customer_id: customer.id,
+      customer_id: customers[0].id as string,
       booking_id: booking.id,
       items: 'Link update test',
       total: 500,
@@ -74,9 +75,9 @@ describe('order service', () => {
   })
 
   it('deletes an order', async () => {
-    const customer = getStore().customers[0]
+    const customers = getTable('customers')
     const created = await createOrder({
-      customer_id: customer.id,
+      customer_id: customers[0].id as string,
       items: 'Delete test',
       total: 250,
       payment_status: 'pending',
@@ -84,7 +85,7 @@ describe('order service', () => {
       staff_member: '',
     })
     await deleteOrder(created.id)
-    const res = await listOrders({ filters: { customer_id: customer.id }, perPage: 100 })
+    const res = await listOrders({ filters: { customer_id: customers[0].id }, perPage: 100 })
     expect(res.data.some((o) => o.id === created.id)).toBe(false)
   })
 })

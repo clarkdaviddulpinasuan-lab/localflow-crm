@@ -1,9 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { ChevronDown, ChevronRight, CalendarCheck, ShoppingCart, ClipboardList } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea, FieldWrapper } from '@/components/ui/Field'
 import { Button } from '@/components/ui/Button'
+import { DateRangePicker, type DateRange } from '@/components/ui/DateRangePicker'
+import { Combobox } from '@/components/ui/Combobox'
 import { useBusiness } from '@/contexts/BusinessContext'
+import { getActiveResources } from '@/services/resourceService'
 import type {
   Customer,
   CustomerStatus,
@@ -69,6 +72,7 @@ const taskStatusOptions: { value: TaskStatus; label: string }[] = [
 export interface BookingData {
   resource: string
   date: string
+  end_date: string
   start_time: string
   end_time: string
   guests: number
@@ -81,6 +85,8 @@ export interface BookingData {
 export interface OrderData {
   items: string
   description: string
+  start_date: string
+  end_date: string
   total: number
   status: OrderStatus
   payment_status: PaymentStatus
@@ -168,6 +174,7 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
   const [booking, setBookingState] = useState<BookingData>({
     resource: '',
     date: new Date().toISOString().slice(0, 10),
+    end_date: '',
     start_time: '14:00',
     end_time: '12:00',
     guests: 1,
@@ -180,6 +187,8 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
   const [order, setOrderState] = useState<OrderData>({
     items: '',
     description: '',
+    start_date: '',
+    end_date: '',
     total: 0,
     status: 'new',
     payment_status: 'pending',
@@ -195,6 +204,14 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
   })
 
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({})
+  const [dbResources, setDbResources] = useState<{ name: string; color?: string | null }[]>([])
+
+  useEffect(() => {
+    if (!open) return
+    getActiveResources()
+      .then((resources) => setDbResources(resources.map((r) => ({ name: r.name, color: r.color }))))
+      .catch(() => setDbResources([]))
+  }, [open])
 
   function set<K extends keyof CustomerFormValues>(key: K, value: CustomerFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -214,6 +231,16 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
   function setTask<K extends keyof TaskData>(key: K, value: TaskData[K]) {
     setTaskState((prev) => ({ ...prev, [key]: value }))
     setErrors((e) => ({ ...e, [`task.${key}`]: undefined }))
+  }
+
+  function handleBookingRangeChange({ start, end }: DateRange) {
+    setBooking('date', start ?? '')
+    setBooking('end_date', end ?? '')
+  }
+
+  function handleOrderRangeChange({ start, end }: DateRange) {
+    setOrder('start_date', start ?? '')
+    setOrder('end_date', end ?? '')
   }
 
   function validate(): boolean {
@@ -258,7 +285,17 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
     await onSave(result)
   }
 
-  const uniqueResources = Array.from(new Set(terminology.defaultResources))
+  const resourceColors = useMemo(() => {
+    const map = new Map<string, string | null>()
+    dbResources.forEach((r) => map.set(r.name, r.color ?? null))
+    return map
+  }, [dbResources])
+
+  const uniqueResources = useMemo(() => {
+    const names = new Set<string>()
+    dbResources.forEach((r) => names.add(r.name))
+    return Array.from(names)
+  }, [dbResources])
 
   return (
     <Modal
@@ -344,50 +381,50 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
             />
             {showBooking && (
               <div className="space-y-3 pl-7 pr-1 pb-1">
-                <FieldWrapper label={`${terminology.resourceLabel}`} required error={errors['booking.resource']}>
+                <FieldWrapper label={terminology.resourceLabel} required error={errors['booking.resource']}>
                   <div className="flex flex-wrap gap-2 mb-2">
-                    {uniqueResources.map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setBooking('resource', r)}
-                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                          booking.resource === r
-                            ? 'bg-primary-50 border-primary-300 text-primary-700'
-                            : 'border-surface-200 text-surface-600 hover:bg-surface-50'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
+                    {uniqueResources.map((r) => {
+                      const color = resourceColors.get(r)
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setBooking('resource', r)}
+                          className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                            booking.resource === r
+                              ? 'bg-primary-50 border-primary-300 text-primary-700'
+                              : 'border-surface-200 text-surface-600 hover:bg-surface-50'
+                          }`}
+                        >
+                          {color && (
+                            <span
+                              className="inline-block h-2 w-2 rounded-full mr-1.5 -mb-px"
+                              style={{ backgroundColor: color }}
+                            />
+                          )}
+                          {r}
+                        </button>
+                      )
+                    })}
                   </div>
-                  <Input
+                  <Combobox
                     id="booking_resource"
                     value={booking.resource}
-                    onChange={(e) => setBooking('resource', e.target.value)}
-                    placeholder={`e.g. ${terminology.defaultResources[0]}`}
+                    onChange={(v) => setBooking('resource', v)}
+                    options={uniqueResources.map((r) => ({ value: r, label: r }))}
+                    placeholder={`Search ${terminology.resourceLabel.toLowerCase()}...`}
+                    emptyMessage={`No ${terminology.resourceLabel.toLowerCase()} matches`}
+                    className="mt-1"
                   />
                 </FieldWrapper>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input
-                    id="booking_date"
-                    label="Date"
-                    type="date"
-                    required
-                    value={booking.date}
-                    onChange={(e) => setBooking('date', e.target.value)}
-                    error={errors['booking.date']}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-surface-700">Dates</label>
+                  <DateRangePicker
+                    value={{ start: booking.date || null, end: booking.end_date || null }}
+                    onChange={handleBookingRangeChange}
                   />
-                  <Input
-                    id="booking_guests"
-                    label="Guests"
-                    type="number"
-                    min={1}
-                    value={booking.guests}
-                    onChange={(e) => setBooking('guests', parseInt(e.target.value) || 1)}
-                    error={errors['booking.guests']}
-                  />
+                  {errors['booking.date'] && <p className="text-xs text-danger-600">{errors['booking.date']}</p>}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -408,17 +445,17 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
                     onChange={(e) => setBooking('end_time', e.target.value)}
                   />
                   <Input
-                    id="booking_amount"
-                    label="Amount"
+                    id="booking_guests"
+                    label="Guests"
                     type="number"
-                    min={0}
-                    step="0.01"
-                    value={booking.amount}
-                    onChange={(e) => setBooking('amount', parseFloat(e.target.value) || 0)}
+                    min={1}
+                    value={booking.guests}
+                    onChange={(e) => setBooking('guests', parseInt(e.target.value) || 1)}
+                    error={errors['booking.guests']}
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Select
                     id="booking_status"
                     label="Status"
@@ -432,6 +469,15 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
                     value={booking.payment_status}
                     onChange={(e) => setBooking('payment_status', e.target.value as PaymentStatus)}
                     options={paymentOptions}
+                  />
+                  <Input
+                    id="booking_amount"
+                    label="Amount"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={booking.amount}
+                    onChange={(e) => setBooking('amount', parseFloat(e.target.value) || 0)}
                   />
                 </div>
 
@@ -474,6 +520,14 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
                   placeholder="Optional details about the order"
                   rows={2}
                 />
+
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-surface-700">Dates</label>
+                  <DateRangePicker
+                    value={{ start: order.start_date || null, end: order.end_date || null }}
+                    onChange={handleOrderRangeChange}
+                  />
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Input

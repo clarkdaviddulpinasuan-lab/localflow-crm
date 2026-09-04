@@ -1,23 +1,9 @@
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
-import type { MessageTemplate, PaginatedResponse, TemplateChannel } from '@/types'
-import { applyQuery, type QueryParams } from '@/utils/query'
+import type { Booking, Customer, MessageTemplate, PaginatedResponse, TemplateChannel } from '@/types'
+import type { QueryParams } from '@/utils/query'
 
 export const CHANNEL_LABELS: Record<TemplateChannel, string> = { email: 'Email', sms: 'SMS' }
-
-function logActivity(s: DemoStore, action: string, templateId: string, name: string) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action,
-    entity_type: 'template',
-    entity_id: templateId,
-    description: `${action} template “${name}”`,
-    created_at: new Date().toISOString(),
-  })
-}
 
 async function listFromSupabase(params: QueryParams<MessageTemplate> = {}): Promise<PaginatedResponse<MessageTemplate>> {
   let query = supabase.from('message_templates').select('*', { count: 'exact' })
@@ -41,29 +27,10 @@ async function listFromSupabase(params: QueryParams<MessageTemplate> = {}): Prom
 }
 
 export async function listTemplates(params: QueryParams<MessageTemplate> = {}): Promise<PaginatedResponse<MessageTemplate>> {
-  if (isDemo()) return applyQuery(getStore().messageTemplates, params)
   return listFromSupabase(params)
 }
 
 export async function createTemplate(input: Pick<MessageTemplate, 'name' | 'channel' | 'body'> & { subject?: string }): Promise<MessageTemplate> {
-  const now = new Date().toISOString()
-  if (isDemo()) {
-    const template: MessageTemplate = {
-      id: nextId('tpl'),
-      business_id: getStore().business.id,
-      name: input.name,
-      channel: input.channel,
-      subject: input.channel === 'email' ? input.subject ?? null : null,
-      body: input.body,
-      created_at: now,
-      updated_at: now,
-    }
-    updateStore((s) => {
-      s.messageTemplates.unshift(template)
-      logActivity(s, 'created', template.id, template.name)
-    })
-    return template
-  }
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('message_templates')
@@ -81,21 +48,6 @@ export async function createTemplate(input: Pick<MessageTemplate, 'name' | 'chan
 }
 
 export async function updateTemplate(id: string, patch: Partial<Pick<MessageTemplate, 'name' | 'channel' | 'subject' | 'body'>>): Promise<MessageTemplate> {
-  if (isDemo()) {
-    const existing = getStore().messageTemplates.find((t) => t.id === id)
-    if (!existing) throw new Error('Template not found')
-    const updated: MessageTemplate = {
-      ...existing,
-      ...patch,
-      subject: (patch.channel ?? existing.channel) === 'email' ? patch.subject ?? existing.subject ?? null : null,
-      updated_at: new Date().toISOString(),
-    }
-    updateStore((s) => {
-      s.messageTemplates = s.messageTemplates.map((t) => (t.id === id ? updated : t))
-      logActivity(s, 'updated', id, updated.name)
-    })
-    return updated
-  }
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('message_templates')
@@ -114,22 +66,56 @@ export async function updateTemplate(id: string, patch: Partial<Pick<MessageTemp
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  if (isDemo()) {
-    const template = getStore().messageTemplates.find((t) => t.id === id)
-    updateStore((s) => {
-      s.messageTemplates = s.messageTemplates.filter((t) => t.id !== id)
-      if (template) logActivity(s, 'deleted', id, template.name)
-    })
-    return
-  }
   const businessId = await getCurrentBusinessId()
   const { error } = await supabase.from('message_templates').delete().eq('id', id).eq('business_id', businessId)
   if (error) throw new Error(messageFromError(error, 'Failed to delete template.'))
 }
 
 /**
- * Renders {{placeholder}} values ({{customer}}, {{business}}, {{date}}) into a
- * template body/subject for a given customer.
+ * Placeholder values shared by every message: {{customer}}, {{first_name}},
+ * {{last_name}}, {{email}}, {{phone}}, {{date}}, {{business}}.
+ */
+export function customerTemplateValues(
+  customer: Pick<Customer, 'first_name' | 'last_name'> & { email?: string | null; phone?: string | null },
+  business?: { name: string } | null
+): Record<string, string> {
+  return {
+    customer: `${customer.first_name} ${customer.last_name}`.trim(),
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    email: customer.email ?? '',
+    phone: customer.phone ?? '',
+    date: new Date().toISOString().slice(0, 10),
+    business: business?.name ?? '',
+  }
+}
+
+/**
+ * Adds booking-specific placeholders on top of the shared ones:
+ * {{booking_id}}, {{resource}}, {{date}}, {{start_time}}, {{end_time}},
+ * {{guests}}, {{amount}}.
+ */
+export function bookingTemplateValues(
+  customer: Pick<Customer, 'first_name' | 'last_name'> & { email?: string | null; phone?: string | null },
+  booking: Pick<Booking, 'id' | 'resource' | 'date' | 'start_time' | 'end_time' | 'guests' | 'amount'>,
+  business?: { name: string } | null
+): Record<string, string> {
+  return {
+    ...customerTemplateValues(customer, business),
+    booking_id: booking.id,
+    resource: booking.resource,
+    date: booking.date,
+    start_time: booking.start_time,
+    end_time: booking.end_time,
+    guests: String(booking.guests),
+    amount: String(booking.amount),
+  }
+}
+
+/**
+ * Renders {{placeholder}} values into a template body/subject. Pass the result
+ * of {@link customerTemplateValues} / {@link bookingTemplateValues}; any
+ * unknown placeholder simply unfolds to an empty string.
  */
 export function renderTemplate(template: Pick<MessageTemplate, 'body'> & { subject?: string | null }, values: Record<string, string>): { subject?: string; body: string } {
   const apply = (text: string) =>

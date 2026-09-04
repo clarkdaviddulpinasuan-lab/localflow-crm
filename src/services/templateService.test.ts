@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore, getStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock, getTable } from '@/test/supabaseMock'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate, renderTemplate } from '@/services/templateService'
 
 describe('template service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('lists seeded templates', async () => {
@@ -12,16 +13,15 @@ describe('template service', () => {
     expect(res.data.length).toBeGreaterThan(0)
   })
 
-  it('creates, updates and deletes a template with activity', async () => {
+  it('creates, updates and deletes a template', async () => {
     const created = await createTemplate({ name: 'Waitlist', channel: 'sms', body: 'Thanks {{customer}}' })
-    expect(getStore().messageTemplates.some((t) => t.id === created.id)).toBe(true)
-    expect(getStore().activities[0].entity_type).toBe('template')
+    expect(getTable('message_templates').some((t) => t.id === created.id)).toBe(true)
 
     const updated = await updateTemplate(created.id, { body: 'New body' })
     expect(updated.body).toBe('New body')
 
     await deleteTemplate(created.id)
-    expect(getStore().messageTemplates.some((t) => t.id === created.id)).toBe(false)
+    expect(getTable('message_templates').some((t) => t.id === created.id)).toBe(false)
   })
 
   it('stores no subject for SMS templates', async () => {

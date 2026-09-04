@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock } from '@/test/supabaseMock'
 import { getInstanceConfig, saveInstanceConfig, DEFAULT_INSTANCE_CONFIG, mergeInstanceConfig } from '@/services/instanceConfigService'
 
 describe('instance config service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('returns defaults when nothing is saved', async () => {

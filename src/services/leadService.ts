@@ -1,29 +1,10 @@
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/services/activityService'
 import type { Lead, PaginatedResponse } from '@/types'
-import { applyQuery, type QueryParams } from '@/utils/query'
+import type { QueryParams } from '@/utils/query'
 
 export const leadSearchFields: (keyof Lead)[] = ['name', 'company', 'email', 'phone', 'source']
-
-function logActivity(
-  s: DemoStore,
-  action: string,
-  entityType: string,
-  entityId: string,
-  description: string
-) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action,
-    entity_type: entityType,
-    entity_id: entityId,
-    description,
-    created_at: new Date().toISOString(),
-  })
-}
 
 async function listFromSupabase(params: QueryParams<Lead> = {}): Promise<PaginatedResponse<Lead>> {
   let query = supabase.from('leads').select('*', { count: 'exact' })
@@ -59,12 +40,10 @@ async function listFromSupabase(params: QueryParams<Lead> = {}): Promise<Paginat
 }
 
 export async function listLeads(params: QueryParams<Lead> = {}): Promise<PaginatedResponse<Lead>> {
-  if (isDemo()) return applyQuery(getStore().leads, params)
   return listFromSupabase(params)
 }
 
 export async function getLead(id: string): Promise<Lead | undefined> {
-  if (isDemo()) return getStore().leads.find((l) => l.id === id)
   const { data, error } = await supabase.from('leads').select('*').eq('id', id).maybeSingle()
   if (error) throw new Error(messageFromError(error, 'Failed to load lead'))
   return (data as Lead) ?? undefined
@@ -73,22 +52,6 @@ export async function getLead(id: string): Promise<Lead | undefined> {
 export async function createLead(
   input: Omit<Lead, 'id' | 'business_id' | 'created_at' | 'updated_at'>
 ): Promise<Lead> {
-  if (isDemo()) {
-    const now = new Date().toISOString()
-    const lead: Lead = {
-      id: nextId('lead'),
-      business_id: getStore().business.id,
-      ...input,
-      created_at: now,
-      updated_at: now,
-    }
-    updateStore((s) => {
-      s.leads.unshift(lead)
-      logActivity(s, 'created', 'lead', lead.id, `New lead added: ${lead.name}`)
-    })
-    return lead
-  }
-
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('leads')
@@ -107,21 +70,16 @@ export async function createLead(
     .select()
     .single()
   if (error) throw new Error(messageFromError(error, 'Failed to create lead'))
+  await logActivity({
+    action: 'created',
+    entity_type: 'lead',
+    entity_id: data.id,
+    description: `Lead created: ${data.name}`,
+  })
   return data as Lead
 }
 
 export async function updateLead(id: string, input: Partial<Lead>): Promise<Lead> {
-  if (isDemo()) {
-    const existing = getStore().leads.find((l) => l.id === id)
-    if (!existing) throw new Error('Lead not found')
-    const updated: Lead = { ...existing, ...input, id, updated_at: new Date().toISOString() }
-    updateStore((s) => {
-      s.leads = s.leads.map((l) => (l.id === id ? updated : l))
-      logActivity(s, 'updated', 'lead', id, `Lead updated: ${updated.name} (${updated.stage})`)
-    })
-    return updated
-  }
-
   const { data, error } = await supabase
     .from('leads')
     .update(input)
@@ -130,16 +88,28 @@ export async function updateLead(id: string, input: Partial<Lead>): Promise<Lead
     .maybeSingle()
   if (error) throw new Error(messageFromError(error, 'Failed to update lead'))
   if (!data) notFound('Lead')
+  await logActivity({
+    action: 'updated',
+    entity_type: 'lead',
+    entity_id: data.id,
+    description: input.stage ? `Lead moved to ${input.stage}: ${data.name}` : `Lead updated: ${data.name}`,
+  })
   return data as Lead
 }
 
 export async function deleteLead(id: string): Promise<void> {
-  if (isDemo()) {
-    updateStore((s) => {
-      s.leads = s.leads.filter((l) => l.id !== id)
-    })
-    return
-  }
+  const { data: existing, error: fetchErr } = await supabase
+    .from('leads')
+    .select('id,name')
+    .eq('id', id)
+    .maybeSingle()
+  if (fetchErr) throw new Error(messageFromError(fetchErr, 'Failed to load lead'))
   const { error } = await supabase.from('leads').delete().eq('id', id)
   if (error) throw new Error(messageFromError(error, 'Failed to delete lead'))
+  await logActivity({
+    action: 'deleted',
+    entity_type: 'lead',
+    entity_id: id,
+    description: `Lead deleted${existing?.name ? `: ${existing.name}` : ''}`,
+  })
 }

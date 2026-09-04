@@ -1,29 +1,17 @@
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
 import { recalcCustomerStats } from '@/services/customerService'
+import { logActivity } from '@/services/activityService'
 import type { Booking, PaginatedResponse } from '@/types'
-import { applyQuery, type QueryParams } from '@/utils/query'
+import type { QueryParams } from '@/utils/query'
 
 export const bookingSearchFields: (keyof Booking)[] = ['resource', 'notes']
 
-function logActivity(
-  s: DemoStore,
-  action: string,
-  entityType: string,
-  entityId: string,
-  description: string
-) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action,
-    entity_type: entityType,
-    entity_id: entityId,
-    description,
-    created_at: new Date().toISOString(),
-  })
+// Human-friendly date range text: "on 2026-09-03" for a single day, or
+// "from 2026-09-03 to 2026-09-05" for a multi-day span.
+function dateSpan(start: string, end?: string | null): string {
+  if (end && end > start) return ` from ${start} to ${end}`
+  return ` on ${start}`
 }
 
 async function listFromSupabase(params: QueryParams<Booking> = {}): Promise<PaginatedResponse<Booking>> {
@@ -60,12 +48,10 @@ async function listFromSupabase(params: QueryParams<Booking> = {}): Promise<Pagi
 }
 
 export async function listBookings(params: QueryParams<Booking> = {}): Promise<PaginatedResponse<Booking>> {
-  if (isDemo()) return applyQuery(getStore().bookings, params)
   return listFromSupabase(params)
 }
 
 export async function getBooking(id: string): Promise<Booking | undefined> {
-  if (isDemo()) return getStore().bookings.find((b) => b.id === id)
   const { data, error } = await supabase.from('bookings').select('*').eq('id', id).maybeSingle()
   if (error) throw new Error(messageFromError(error, 'Failed to load booking'))
   return (data as Booking) ?? undefined
@@ -74,23 +60,6 @@ export async function getBooking(id: string): Promise<Booking | undefined> {
 export async function createBooking(
   input: Omit<Booking, 'id' | 'business_id' | 'created_at' | 'updated_at'>
 ): Promise<Booking> {
-  if (isDemo()) {
-    const now = new Date().toISOString()
-    const booking: Booking = {
-      id: nextId('bk'),
-      business_id: getStore().business.id,
-      ...input,
-      created_at: now,
-      updated_at: now,
-    }
-    updateStore((s) => {
-      s.bookings.unshift(booking)
-      logActivity(s, 'created', 'booking', booking.id, `New booking created - ${booking.resource} on ${booking.date}`)
-    })
-    await recalcCustomerStats(booking.customer_id)
-    return booking
-  }
-
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('bookings')
@@ -99,6 +68,7 @@ export async function createBooking(
       customer_id: input.customer_id,
       resource: input.resource,
       date: input.date,
+      end_date: input.end_date ? input.end_date : null,
       start_time: input.start_time,
       end_time: input.end_time,
       guests: input.guests,
@@ -111,22 +81,16 @@ export async function createBooking(
     .single()
   if (error) throw new Error(messageFromError(error, 'Failed to create booking'))
   await recalcCustomerStats(input.customer_id)
+  await logActivity({
+    action: 'created',
+    entity_type: 'booking',
+    entity_id: input.customer_id,
+    description: `Booking created${dateSpan(input.date, input.end_date)} (${input.resource})`,
+  })
   return data as Booking
 }
 
 export async function updateBooking(id: string, input: Partial<Booking>): Promise<Booking> {
-  if (isDemo()) {
-    const existing = getStore().bookings.find((b) => b.id === id)
-    if (!existing) throw new Error('Booking not found')
-    const updated: Booking = { ...existing, ...input, id, updated_at: new Date().toISOString() }
-    updateStore((s) => {
-      s.bookings = s.bookings.map((b) => (b.id === id ? updated : b))
-      logActivity(s, 'updated', 'booking', id, `Booking updated - ${updated.resource}`)
-    })
-    await recalcCustomerStats(existing.customer_id)
-    return updated
-  }
-
   const { data, error } = await supabase
     .from('bookings')
     .update(input)
@@ -136,15 +100,16 @@ export async function updateBooking(id: string, input: Partial<Booking>): Promis
   if (error) throw new Error(messageFromError(error, 'Failed to update booking'))
   if (!data) notFound('Booking')
   await recalcCustomerStats(data.customer_id)
+  await logActivity({
+    action: 'updated',
+    entity_type: 'booking',
+    entity_id: data.customer_id,
+    description: `Booking updated${dateSpan(data.date, data.end_date)} (${data.resource})`,
+  })
   return data as Booking
 }
 
 export async function cancelBooking(id: string, reason?: string): Promise<Booking> {
-  if (isDemo()) {
-    const existing = getStore().bookings.find((b) => b.id === id)
-    if (!existing) throw new Error('Booking not found')
-    return updateBooking(id, { status: 'cancelled', notes: reason || existing.notes })
-  }
   const { data, error } = await supabase
     .from('bookings')
     .update({ status: 'cancelled', notes: reason || undefined })
@@ -154,28 +119,80 @@ export async function cancelBooking(id: string, reason?: string): Promise<Bookin
   if (error) throw new Error(messageFromError(error, 'Failed to cancel booking'))
   if (!data) notFound('Booking')
   await recalcCustomerStats(data.customer_id)
+  await logActivity({
+    action: 'cancelled',
+    entity_type: 'booking',
+    entity_id: data.customer_id,
+    description: `Booking cancelled (${data.resource})`,
+  })
+  return data as Booking
+}
+
+export async function checkIn(id: string): Promise<Booking> {
+  const now = new Date()
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({
+      status: 'checked_in',
+      check_in_date: now.toISOString().slice(0, 10),
+      check_in_time: now.toTimeString().slice(0, 5),
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+  if (error) throw new Error(messageFromError(error, 'Failed to check in'))
+  if (!data) notFound('Booking')
+  await recalcCustomerStats(data.customer_id)
+  await logActivity({
+    action: 'checked_in',
+    entity_type: 'booking',
+    entity_id: data.customer_id,
+    description: `Customer checked in (${data.resource})`,
+  })
+  return data as Booking
+}
+
+export async function checkOut(id: string): Promise<Booking> {
+  const now = new Date()
+  const { data, error } = await supabase
+    .from('bookings')
+    .update({
+      status: 'completed',
+      check_out_date: now.toISOString().slice(0, 10),
+      check_out_time: now.toTimeString().slice(0, 5),
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+  if (error) throw new Error(messageFromError(error, 'Failed to check out'))
+  if (!data) notFound('Booking')
+  await recalcCustomerStats(data.customer_id)
+  await logActivity({
+    action: 'checked_out',
+    entity_type: 'booking',
+    entity_id: data.customer_id,
+    description: `Customer checked out (${data.resource})`,
+  })
   return data as Booking
 }
 
 export async function deleteBooking(id: string): Promise<void> {
-  let customerId: string | undefined
-  if (isDemo()) {
-    const existing = getStore().bookings.find((b) => b.id === id)
-    customerId = existing?.customer_id
-    updateStore((s) => {
-      s.bookings = s.bookings.filter((b) => b.id !== id)
-    })
-    if (customerId) await recalcCustomerStats(customerId)
-    return
-  }
   const { data: existing, error: fetchErr } = await supabase
     .from('bookings')
     .select('customer_id')
     .eq('id', id)
     .maybeSingle()
   if (fetchErr) throw new Error(messageFromError(fetchErr, 'Failed to load booking'))
-  customerId = existing?.customer_id
+  const customerId = existing?.customer_id
   const { error } = await supabase.from('bookings').delete().eq('id', id)
   if (error) throw new Error(messageFromError(error, 'Failed to delete booking'))
-  if (customerId) await recalcCustomerStats(customerId)
+  if (customerId) {
+    await recalcCustomerStats(customerId)
+    await logActivity({
+      action: 'deleted',
+      entity_type: 'booking',
+      entity_id: customerId,
+      description: 'Booking deleted',
+    })
+  }
 }

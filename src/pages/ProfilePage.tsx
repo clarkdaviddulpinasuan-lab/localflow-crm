@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Field'
 import { Avatar } from '@/components/ui/Avatar'
+import { Spinner } from '@/components/ui/Spinner'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getProfile, updateProfile, ROLE_LABELS } from '@/services/settingsService'
@@ -73,8 +74,12 @@ export function ProfilePage() {
       <div className="space-y-6">
         <PageHeader title="My Profile" description="View and manage your account information." />
         <Card>
-          <div className="py-10 text-center text-sm text-surface-500">
-            {error ? error : 'Loading your profile...'}
+          <div className="py-10 flex justify-center">
+            {error ? (
+              <p className="text-center text-sm text-surface-500">{error}</p>
+            ) : (
+              <Spinner className="gap-3" label="Loading your profile…" />
+            )}
           </div>
         </Card>
       </div>

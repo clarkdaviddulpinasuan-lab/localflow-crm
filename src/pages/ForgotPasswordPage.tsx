@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
-import { isDemoMode, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -14,11 +14,6 @@ export function ForgotPasswordPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-
-    if (isDemoMode()) {
-      setError('Password reset is available once Supabase is connected.')
-      return
-    }
 
     setLoading(true)
     try {

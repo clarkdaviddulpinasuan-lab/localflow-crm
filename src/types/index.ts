@@ -88,6 +88,7 @@ export interface Booking {
   customer_id: string
   resource: string
   date: string
+  end_date?: string | null
   start_time: string
   end_time: string
   guests: number
@@ -95,6 +96,35 @@ export interface Booking {
   amount: number
   payment_status: PaymentStatus
   notes?: string
+  check_in_date?: string | null
+  check_in_time?: string | null
+  check_out_date?: string | null
+  check_out_time?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Resource {
+  id: string
+  business_id: string
+  name: string
+  type: string
+  color?: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BookingItem {
+  id: string
+  business_id: string
+  booking_id: string
+  name: string
+  quantity: number
+  unit_price: number
+  total: number
+  category?: string | null
+  notes?: string | null
   created_at: string
   updated_at: string
 }
@@ -107,6 +137,8 @@ export interface Order {
   order_number: string
   items: string
   description?: string
+  start_date?: string | null
+  end_date?: string | null
   total: number
   payment_status: PaymentStatus
   status: OrderStatus
@@ -204,7 +236,7 @@ export type AutomationTriggerType =
   | 'inactive_customer'
   | 'new_lead'
 
-export type AutomationActionType = 'create_task' | 'create_follow_up' | 'notify_user' | 'log_activity'
+export type AutomationActionType = 'create_task' | 'create_follow_up' | 'notify_user' | 'send_email' | 'log_activity'
 
 export interface AutomationRule {
   id: string
@@ -243,7 +275,7 @@ export interface MessageTemplate {
   updated_at: string
 }
 
-export type CommunicationStatus = 'sent' | 'failed'
+export type CommunicationStatus = 'pending' | 'sent' | 'delivered' | 'failed'
 
 export interface Communication {
   id: string
@@ -254,15 +286,32 @@ export interface Communication {
   subject?: string | null
   body: string
   status: CommunicationStatus
+  /** Provider that handled the send (e.g. 'resend', 'dryrun'). Populated by the Edge Function. */
+  provider?: string | null
+  /** Provider-side message id used for delivery tracking. */
+  provider_message_id?: string | null
+  /** Failure reason when status is 'failed'. */
+  error?: string | null
   sent_at: string
+  delivered_at?: string | null
 }
 
-export interface WorkingHoursDay {
-  open: string | null
-  close: string | null
+/** Per-business sender identity shown to customers (Settings → Messaging). */
+export interface MessageConfig {
+  sender_name: string
+  /** Verified sender address used by the email provider (e.g. bookings@mail.yourdomain.ph). */
+  from_email?: string | null
+  reply_to_email?: string | null
+  sms_sender_name?: string | null
 }
 
-export type WorkingHours = Record<string, WorkingHoursDay>
+/** Provider wiring flags shown on the Messaging settings card. */
+export interface MessageProvidersConfig {
+  email: {
+    provider: 'resend' | 'dryrun'
+    configured: boolean
+  }
+}
 
 export interface InstanceFeatures {
   public_shopfront: boolean

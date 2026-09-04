@@ -55,7 +55,7 @@ export function OverviewPage() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [k, u, a, h, r, g, att, ins] = await Promise.all([
+      const [k, u, a, h, r, g, att, ins] = await Promise.allSettled([
         computeKpisFromConfig(config.kpiCards, range),
         upcomingReservations(5),
         recentActivity(6),
@@ -66,15 +66,17 @@ export function OverviewPage() {
         generateInsights(range),
       ])
       if (cancelled) return
-      setKpis(k)
-      setUpcoming(u)
-      setActivity(a)
-      setHealth(h)
-      setRevenue(r)
-      setGrowth(g)
-      setAttention(att)
+      const ok = <T,>(r: PromiseSettledResult<T>, fb: T) =>
+        r.status === 'fulfilled' ? r.value : fb
+      setKpis(ok(k, []))
+      setUpcoming(ok(u, []))
+      setActivity(ok(a, []))
+      setHealth(ok(h, { retention: 0, openTasks: 0, pendingBookings: 0, repeatCustomers: 0, outstandingCredit: 0 }))
+      setRevenue(ok(r, []))
+      setGrowth(ok(g, []))
+      setAttention(ok(att, []))
       setAttentionLoading(false)
-      setInsights(ins)
+      setInsights(ok(ins, []))
       setInsightsLoading(false)
     }
     load()

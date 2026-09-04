@@ -27,10 +27,9 @@ Create a `.env` locally (or set the variables in your host’s dashboard):
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_DEMO_MODE=false
 ```
 
-> `VITE_DEMO_MODE=true` runs entirely in the browser with no backend — great for demos and previews, but **every new account still needs the real database in production**.
+> The app has **no offline mode** — it requires a live Supabase project for auth and data (enforced with RLS per signup).
 
 ## 3. Build locally
 
@@ -65,7 +64,7 @@ If you haven't imported the project to Vercel yet, do that first (see below), th
 ### Via the dashboard
 1. Push to GitHub, then Vercel → **Add New Project** → import your repo.
 2. Framework preset: **Vite** (auto-detected). Build command `npm run build`, output `dist`.
-3. Add environment variables from step 2 (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_DEMO_MODE=false`).
+3. Add environment variables from step 2 (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 4. Deploy.
 
 ### Via CLI

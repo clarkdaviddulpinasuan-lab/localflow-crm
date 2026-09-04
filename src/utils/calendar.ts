@@ -94,3 +94,21 @@ export function bookingToEvent(b: Booking): CalendarEvent {
     time: b.start_time,
   }
 }
+
+// Expand a booking into one event per day so multi-day stays highlight every
+// date in the span on the calendar. Single-day bookings yield one event, and
+// each expanded event shares the booking id so it opens the same detail view.
+export function bookingToEvents(b: Booking): CalendarEvent[] {
+  const start = parseISO(b.date)
+  const end = b.end_date && b.end_date > b.date ? parseISO(b.end_date) : start
+  const days = eachDayOfInterval({ start, end })
+  return days.map((d) => ({
+    id: b.id,
+    date: format(d, 'yyyy-MM-dd'),
+    title: b.resource,
+    subtitle: b.start_time,
+    type: 'booking' as const,
+    status: b.status,
+    time: b.start_time,
+  }))
+}

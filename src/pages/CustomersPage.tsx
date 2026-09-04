@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Plus, Download, Users } from 'lucide-react'
+import { Plus, Download, Users } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge, getStatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Field'
+import { SearchInput } from '@/components/ui/SearchInput'
 import { SavedViewsMenu, type SavedViewState } from '@/components/SavedViewsMenu'
 import { CustomerForm, type CustomerFormData } from '@/features/customers/CustomerForm'
 import { formatCurrency, formatNumber } from '@/utils/format'
@@ -42,6 +43,19 @@ export function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [suggestions, setSuggestions] = useState<Customer[]>([])
+
+  // Load the full record set (respecting non-search filters) to power the
+  // autocomplete suggestions dropdown.
+  useEffect(() => {
+    setSuggestions([])
+    listCustomers({
+      perPage: 9999,
+      filters: { status: status || undefined, type: type || undefined },
+    })
+      .then((res) => setSuggestions(res.data))
+      .catch(() => setSuggestions([]))
+  }, [status, type])
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -241,18 +255,18 @@ export function CustomersPage() {
       <Card padding={false}>
         <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
+            <SearchInput<Customer>
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
+              onChange={(v) => {
+                setSearch(v)
                 setPage(1)
               }}
+              items={suggestions}
+              getLabel={(c) => `${c.first_name} ${c.last_name}`}
+              getMatchText={(c) => `${c.first_name} ${c.last_name} ${c.email ?? ''} ${c.phone ?? ''}`}
+              getSubLabel={(c) => c.email || c.phone || undefined}
               placeholder="Search by name, email, or phone..."
-              className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-surface-200 bg-surface-50 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-colors"
+              noResultsMessage="No customers match your search"
             />
           </div>
           <div className="flex gap-3">

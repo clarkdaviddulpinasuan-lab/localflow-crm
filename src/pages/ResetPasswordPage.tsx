@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
-import { isDemoMode, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export function ResetPasswordPage() {
   const navigate = useNavigate()
@@ -16,11 +16,6 @@ export function ResetPasswordPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-
-    if (isDemoMode()) {
-      setError('Password reset is available once Supabase is connected.')
-      return
-    }
 
     if (password !== confirm) {
       setError('Passwords do not match.')

@@ -14,6 +14,8 @@ const entityColors: Record<string, 'primary' | 'success' | 'warning' | 'danger' 
   notification: 'default',
 }
 
+const entityTypes = ['customer', 'booking', 'order', 'task', 'lead', 'customer_note', 'notification']
+
 export function ActivityPage() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [filter, setFilter] = useState('all')
@@ -23,7 +25,6 @@ export function ActivityPage() {
   }, [])
 
   const filtered = filter === 'all' ? activities : activities.filter((a) => a.entity_type === filter)
-  const entityTypes = Array.from(new Set(activities.map((a) => a.entity_type)))
 
   return (
     <div className="space-y-6">

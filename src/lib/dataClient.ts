@@ -1,15 +1,5 @@
-import { isDemoMode, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { PaginatedResponse } from '@/types'
-
-export type DataSource = 'demo' | 'supabase'
-
-export function dataSource(): DataSource {
-  return isDemoMode() ? 'demo' : 'supabase'
-}
-
-export function isDemo(): boolean {
-  return dataSource() === 'demo'
-}
 
 // Build a PaginatedResponse from an already-sliced array + total count
 export function paginate<T>(rows: T[], total: number, page = 1, perPage = 50): PaginatedResponse<T> {

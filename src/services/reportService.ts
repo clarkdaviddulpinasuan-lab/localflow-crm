@@ -1,6 +1,4 @@
 import { subDays, parseISO, format } from 'date-fns'
-import { getStore } from '@/services/demoStore'
-import { isDemo } from '@/lib/dataClient'
 import { listOrders } from '@/services/orderService'
 import { listBookings } from '@/services/bookingService'
 import { listCustomers } from '@/services/customerService'
@@ -20,13 +18,8 @@ export function rangeEnd(_range: ReportRange, customEnd?: string) {
 }
 
 export async function salesByDay(range: ReportRange, customStart?: string, customEnd?: string) {
-  let orders
-  if (isDemo()) {
-    orders = getStore().orders
-  } else {
-    const o = await listOrders({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' })
-    orders = o.data
-  }
+  const o = await listOrders({ perPage: 10000, sortBy: 'created_at', sortDir: 'asc' })
+  const orders = o.data
   const start = rangeStart(range, customStart, customEnd)
   const end = rangeEnd(range, customEnd)
   return orders
@@ -40,13 +33,8 @@ export async function totalSales(range: ReportRange, customStart?: string, custo
 }
 
 export async function bookingsStats() {
-  let bookings
-  if (isDemo()) {
-    bookings = getStore().bookings
-  } else {
-    const b = await listBookings({ perPage: 10000 })
-    bookings = b.data
-  }
+  const b = await listBookings({ perPage: 10000 })
+  const bookings = b.data
   const byStatus = new Map<string, number>()
   const byPayment = new Map<string, number>()
   bookings.forEach((b) => {
@@ -63,13 +51,8 @@ export async function bookingsStats() {
 }
 
 export async function customerStats() {
-  let customers
-  if (isDemo()) {
-    customers = getStore().customers
-  } else {
-    const c = await listCustomers({ perPage: 10000 })
-    customers = c.data
-  }
+  const c = await listCustomers({ perPage: 10000 })
+  const customers = c.data
   const byType = new Map<string, number>()
   const byStatus = new Map<string, number>()
   customers.forEach((c) => {
@@ -89,13 +72,8 @@ export async function customerStats() {
 }
 
 export async function taskCompletionStats() {
-  let tasks
-  if (isDemo()) {
-    tasks = getStore().tasks
-  } else {
-    const t = await listTasks({ perPage: 10000 })
-    tasks = t.data
-  }
+  const t = await listTasks({ perPage: 10000 })
+  const tasks = t.data
   const completed = tasks.filter((t) => t.status === 'completed').length
   const total = tasks.length || 1
   return {
@@ -106,13 +84,8 @@ export async function taskCompletionStats() {
 }
 
 export async function ordersByStatus() {
-  let orders
-  if (isDemo()) {
-    orders = getStore().orders
-  } else {
-    const o = await listOrders({ perPage: 10000 })
-    orders = o.data
-  }
+  const o = await listOrders({ perPage: 10000 })
+  const orders = o.data
   const byStatus = new Map<string, number>()
   const byPayment = new Map<string, number>()
   orders.forEach((o) => {

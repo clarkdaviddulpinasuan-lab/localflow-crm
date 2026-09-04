@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { OPEN_COMMAND_EVENT } from '@/lib/commandPalette'
+import { Spinner } from '@/components/ui/Spinner'
 
 type PaletteKind = 'action' | 'customer' | 'booking' | 'order' | 'task' | 'lead'
 
@@ -138,13 +139,14 @@ async function loadResourceItems(): Promise<PaletteItem[]> {
 function matchItems(items: PaletteItem[], raw: string): PaletteItem[] {
   const terms = raw.toLowerCase().trim().split(/\s+/).filter(Boolean)
   if (terms.length === 0) return items
-  return items
-    .filter((it) => terms.every((t) => it.search.includes(t)))
-    .sort((a, b) => {
-      const aPrefix = a.search.startsWith(terms[0]) ? 1 : 0
-      const bPrefix = b.search.startsWith(terms[0]) ? 1 : 0
-      return bPrefix - aPrefix || a.title.localeCompare(b.title)
-    })
+  const matched = items.filter((it) => terms.every((t) => it.search.includes(t)))
+  return matched.sort((a, b) => {
+    // Rank by how many terms match at the start of the search text (prefix),
+    // then alphabetically — prefix (recommendation) matches surface first.
+    const aPrefixes = terms.filter((t) => a.search.startsWith(t)).length
+    const bPrefixes = terms.filter((t) => b.search.startsWith(t)).length
+    return bPrefixes - aPrefixes || a.title.localeCompare(b.title)
+  })
 }
 
 function itemKey(it: PaletteItem): string {
@@ -275,7 +277,9 @@ export function CommandPalette() {
 
         <div className="max-h-[50vh] overflow-y-auto p-2">
           {loading ? (
-            <div className="px-3 py-8 text-center text-sm text-surface-500">Loading workspace…</div>
+            <div className="px-3 py-8 flex justify-center">
+              <Spinner size="lg" />
+            </div>
           ) : flat.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-surface-500">
               No results for “{query}”.

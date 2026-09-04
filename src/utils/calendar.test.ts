@@ -7,6 +7,7 @@ import {
   shiftDate,
   viewTitle,
   bookingToEvent,
+  bookingToEvents,
 } from '@/utils/calendar'
 
 describe('calendar utils', () => {
@@ -86,5 +87,49 @@ describe('calendar utils', () => {
     expect(ev.title).toBe('Room 101')
     expect(ev.time).toBe('14:00')
     expect(ev.status).toBe('confirmed')
+  })
+
+  it('bookingToEvents yields one event per day in a multi-day span', () => {
+    const booking = {
+      id: 'b1',
+      business_id: 'biz',
+      customer_id: 'c1',
+      resource: 'Room 101',
+      date: '2025-06-10',
+      end_date: '2025-06-12',
+      start_time: '14:00',
+      end_time: '15:00',
+      guests: 2,
+      status: 'confirmed' as const,
+      amount: 1500,
+      payment_status: 'paid' as const,
+      created_at: '',
+      updated_at: '',
+    }
+    const events = bookingToEvents(booking)
+    expect(events.map((e) => e.date)).toEqual(['2025-06-10', '2025-06-11', '2025-06-12'])
+    // every day shares the booking id so it opens the same detail
+    events.forEach((e) => expect(e.id).toBe('b1'))
+  })
+
+  it('bookingToEvents yields a single event for a single-day booking', () => {
+    const booking = {
+      id: 'b1',
+      business_id: 'biz',
+      customer_id: 'c1',
+      resource: 'Room 101',
+      date: '2025-06-10',
+      start_time: '14:00',
+      end_time: '15:00',
+      guests: 2,
+      status: 'confirmed' as const,
+      amount: 1500,
+      payment_status: 'paid' as const,
+      created_at: '',
+      updated_at: '',
+    }
+    const events = bookingToEvents(booking)
+    expect(events).toHaveLength(1)
+    expect(events[0].date).toBe('2025-06-10')
   })
 })

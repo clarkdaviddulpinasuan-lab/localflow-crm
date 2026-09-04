@@ -2,7 +2,7 @@
 
 A portfolio-quality CRM and business operations platform built for small hospitality and local businesses — resorts, hotels, restaurants, cafes, sari-sari stores, and more. Track customers, bookings, orders, tasks, leads, and revenue from one dashboard.
 
-Built with **React 19 + TypeScript + Vite + Tailwind CSS 4**, backed by **Supabase** (PostgreSQL + RLS) with a fully functional **demo mode** that requires no backend. Deploys as a static site (or installable PWA) to any host — Vercel, Netlify, Cloudflare Pages, GitHub Pages.
+Built with **React 19 + TypeScript + Vite + Tailwind CSS 4**, backed by **Supabase** (PostgreSQL + RLS) with a fully multi-tenant data model. Deploys as a static site (or installable PWA) to any host — Vercel, Netlify, Cloudflare Pages, GitHub Pages.
 
 ---
 
@@ -14,19 +14,18 @@ Built with **React 19 + TypeScript + Vite + Tailwind CSS 4**, backed by **Supaba
 - **Bookings / Orders** — business-type-aware resources, status + payment tracking, deep-links to customers
 - **Tasks** — overdue highlighting, priority + status filters, quick complete
 - **Leads** — pipeline stages with estimated value tracking
-- **Segments** — data-driven customer personas (high-value, loyal, at-risk, inactive, new, prospect) with stats
 - **Tasks & Leads boards** — kanban-style boards with per-card stage moves (keyboard accessible, no drag required)
 - **Insights** — rule-based observations generated from live data (revenue trends, repeat rate, risk items)
 - **Saved views** — per-page filter/sort presets persisted in the browser
 - **Dashboard customization** — toggle the KPI/chart/health/insights/activity widgets on the overview
 - **Automation** — configure rule triggers (overdue tasks, upcoming/unconfirmed bookings, inactive customers, new leads) that create tasks, follow-ups, notifications, or activity logs; events fire once thanks to a Nonce in the activity trail and rules re-read live data on every run
 - **Templates & Communications** — reusable email/SMS templates with placeholders plus a per-customer message ledger (message customers straight from their profile)
-- **Availability** — per-resource slot grid generated from working hours, with booked slots flagged
+- **Resources** — manage bookable resources (rooms, tables, stylists) with upcoming bookings grouped per resource
 - **Follow-ups** — pending/completed/skipped reminders attached to customers
 - **White-label ready** — tenant-level instance config: app name, custom domain, brand accent color, and feature switches
 - **Reports** — date-range sales, charts, booking/payment breakdowns, customer retention, CSV export
 - **Team & Roles** — owner / manager / staff permissions; invite and manage teammates; role-based UI gating
-- **Settings** — business profile, personal preferences, notification controls, data & safety (demo reset)
+- **Settings** — business profile, personal preferences, notification controls, data & safety
 - **Responsive + accessible** — mobile-first layouts, keyboard + screen-reader friendly, reduced-motion support
 
 ---
@@ -44,7 +43,7 @@ npm install
 npm run dev        # start the dev server at http://localhost:5173
 ```
 
-By default the app runs in **demo mode** (no backend needed). All data is stored locally in your browser.
+The app talks to Supabase for auth and data. Create a free Supabase project and run the migrations (see below) before starting the dev server; the app requires real credentials — there is no offline mode. All data is stored in your Supabase project, isolated per account.
 
 ### Production build
 
@@ -72,7 +71,6 @@ npm run lint        # ESLint
    ```env
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
-   VITE_DEMO_MODE=false
    ```
 
 4. Restart the dev server.
@@ -93,13 +91,13 @@ src/
 ├── data/           # demo dataset ("Siargao Breeze Resort")
 ├── pages/          # feature pages (customers, bookings, orders, tasks, ...)
 ├── routes/         # ProtectedRoute
-├── services/       # data layer (demo store backed, Supabase-ready)
+├── services/       # data layer (Supabase-backed services)
 ├── utils/          # format, query, csv, calendar, permissions, cn
 └── types/          # domain models + schema documentation
 supabase/           # schema (SQL), RLS, seed
 ```
 
-The architecture is intentionally layered so the demo store can be swapped for Supabase without touching UI code. See [ARCHITECTURE.md](./ARCHITECTURE.md).
+Services in `src/services/` are the only code that talks to Supabase; pages and components never touch it directly. See [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
@@ -113,7 +111,7 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## 📚 Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — system design, data flow, demo ↔ Supabase swap
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — system design, data flow, the Supabase data layer
 - [DATABASE.md](./DATABASE.md) — schema, enums, indexes, triggers, RLS policies
 - [DEPLOYMENT.md](./DEPLOYMENT.md) — deploying to Vercel + wiring Supabase
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — setup, conventions, testing

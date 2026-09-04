@@ -153,6 +153,7 @@ export interface Database {
           customer_id: string
           resource: string
           date: string
+          end_date: string | null
           start_time: string
           end_time: string
           guests: number
@@ -160,6 +161,10 @@ export interface Database {
           amount: number
           payment_status: string
           notes: string | null
+          check_in_date: string | null
+          check_in_time: string | null
+          check_out_date: string | null
+          check_out_time: string | null
           created_at: string
           updated_at: string
         }
@@ -169,6 +174,7 @@ export interface Database {
           customer_id: string
           resource: string
           date: string
+          end_date?: string | null
           start_time: string
           end_time: string
           guests?: number
@@ -176,6 +182,10 @@ export interface Database {
           amount?: number
           payment_status?: string
           notes?: string | null
+          check_in_date?: string | null
+          check_in_time?: string | null
+          check_out_date?: string | null
+          check_out_time?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -183,6 +193,7 @@ export interface Database {
           customer_id?: string
           resource?: string
           date?: string
+          end_date?: string | null
           start_time?: string
           end_time?: string
           guests?: number
@@ -190,6 +201,10 @@ export interface Database {
           amount?: number
           payment_status?: string
           notes?: string | null
+          check_in_date?: string | null
+          check_in_time?: string | null
+          check_out_date?: string | null
+          check_out_time?: string | null
           updated_at?: string
         }
       }
@@ -201,6 +216,8 @@ export interface Database {
           order_number: string
           items: string
           description: string | null
+          start_date: string | null
+          end_date: string | null
           total: number
           payment_status: string
           status: string
@@ -215,6 +232,8 @@ export interface Database {
           order_number: string
           items: string
           description?: string | null
+          start_date?: string | null
+          end_date?: string | null
           total?: number
           payment_status?: string
           status?: string
@@ -225,6 +244,8 @@ export interface Database {
         Update: {
           items?: string
           description?: string | null
+          start_date?: string | null
+          end_date?: string | null
           total?: number
           payment_status?: string
           status?: string
@@ -369,6 +390,74 @@ export interface Database {
           read?: boolean
         }
       }
+      message_templates: {
+        Row: {
+          id: string
+          business_id: string
+          name: string
+          channel: string
+          subject: string | null
+          body: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          name: string
+          channel?: string
+          subject?: string | null
+          body: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          channel?: string
+          subject?: string | null
+          body?: string
+          updated_at?: string
+        }
+      }
+      communications: {
+        Row: {
+          id: string
+          business_id: string
+          customer_id: string
+          channel: string
+          template_id: string | null
+          subject: string | null
+          body: string
+          status: string
+          provider: string | null
+          provider_message_id: string | null
+          error: string | null
+          sent_at: string
+          delivered_at: string | null
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          customer_id: string
+          channel: string
+          template_id?: string | null
+          subject?: string | null
+          body: string
+          status?: string
+          provider?: string | null
+          provider_message_id?: string | null
+          error?: string | null
+          sent_at?: string
+          delivered_at?: string | null
+        }
+        Update: {
+          status?: string
+          provider?: string | null
+          provider_message_id?: string | null
+          error?: string | null
+          delivered_at?: string | null
+        }
+      }
       settings: {
         Row: {
           id: string
@@ -391,6 +480,72 @@ export interface Database {
           updated_at?: string
         }
       }
+      resources: {
+        Row: {
+          id: string
+          business_id: string
+          name: string
+          type: string
+          color: string | null
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          name: string
+          type?: string
+          color?: string | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          type?: string
+          color?: string | null
+          active?: boolean
+          updated_at?: string
+        }
+      }
+      booking_items: {
+        Row: {
+          id: string
+          business_id: string
+          booking_id: string
+          name: string
+          quantity: number
+          unit_price: number
+          total: number
+          category: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          business_id: string
+          booking_id: string
+          name: string
+          quantity?: number
+          unit_price?: number
+          total?: number
+          category?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          quantity?: number
+          unit_price?: number
+          total?: number
+          category?: string | null
+          notes?: string | null
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -402,7 +557,8 @@ export interface Database {
       }
     }
     Enums: {
-      [_ in never]: never
+      template_channel: 'email' | 'sms'
+      communication_status: 'pending' | 'sent' | 'delivered' | 'failed'
     }
     CompositeTypes: {
       [_ in never]: never

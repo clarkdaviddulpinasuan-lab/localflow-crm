@@ -28,7 +28,7 @@ npm run lint           # oxlint
 ### Data & storage
 - **Never** talk to `localStorage` or Supabase directly from a page/component.
 - All persistence goes through a **service** in `src/services/*`.
-- Services read/write the demo store (`demoStore.ts`) when `VITE_DEMO_MODE=true`, and call Supabase otherwise. Keep this swap clean so no UI changes are needed to switch backends.
+- Services read/write Supabase via `src/lib/supabase.ts`. There is no offline/demo mode: tests cover services with the in-memory mock in `src/test/supabaseMock.ts`, seeded from `src/data/demo.ts`.
 
 ### Types
 - Domain models live in `src/types/index.ts`. If you add a table, mirror the model there.

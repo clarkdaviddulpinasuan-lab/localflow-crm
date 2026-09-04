@@ -1,6 +1,4 @@
 import { subDays, parseISO, isWithinInterval } from 'date-fns'
-import { getStore } from '@/services/demoStore'
-import { isDemo } from '@/lib/dataClient'
 import { listCustomers } from '@/services/customerService'
 import { listBookings } from '@/services/bookingService'
 import { listTasks } from '@/services/taskService'
@@ -48,9 +46,9 @@ function windowSums(points: DailyPoint[], windowDays: number) {
 
 export async function generateInsights(windowDays: TrendRange = 30): Promise<Insight[]> {
   const [customers, bookings, tasks, health, revenuePoints] = await Promise.all([
-    (async () => { if (isDemo()) return getStore().customers; const r = await listCustomers({ perPage: 10000 }); return r.data })(),
-    (async () => { if (isDemo()) return getStore().bookings; const r = await listBookings({ perPage: 10000 }); return r.data })(),
-    (async () => { if (isDemo()) return getStore().tasks; const r = await listTasks({ perPage: 10000 }); return r.data })(),
+    (async () => (await listCustomers({ perPage: 10000 })).data)(),
+    (async () => (await listBookings({ perPage: 10000 })).data)(),
+    (async () => (await listTasks({ perPage: 10000 })).data)(),
     businessHealth(),
     revenueTrend(windowDays),
   ])

@@ -1,7 +1,6 @@
-import { getStore, updateStore, resetStore, nextId } from '@/services/demoStore'
-import { isDemo, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
-import { isDemoMode, supabase } from '@/lib/supabase'
-import type { Business, Profile, UserRole } from '@/types'
+import { notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { supabase } from '@/lib/supabase'
+import type { Business, MessageConfig, MessageProvidersConfig, Profile, UserRole } from '@/types'
 import type { DashboardConfigJSON } from '@/config/businessTypes'
 
 export interface Preferences {
@@ -57,7 +56,6 @@ export function savePreferences(prefs: Preferences) {
 }
 
 export async function getBusiness(): Promise<Business> {
-  if (isDemo()) return getStore().business
   const { data, error } = await supabase.from('businesses').select('*').maybeSingle()
   if (error) throw new Error(messageFromError(error, 'Failed to load business'))
   if (!data) notFound('Business')
@@ -65,14 +63,6 @@ export async function getBusiness(): Promise<Business> {
 }
 
 export async function updateBusiness(patch: Partial<Business>): Promise<Business> {
-  if (isDemo()) {
-    const store = getStore()
-    const updated: Business = { ...store.business, ...patch, updated_at: new Date().toISOString() }
-    updateStore((s) => {
-      s.business = updated
-    })
-    return updated
-  }
   const { data, error } = await supabase
     .from('businesses')
     .update(patch)
@@ -84,7 +74,6 @@ export async function updateBusiness(patch: Partial<Business>): Promise<Business
 }
 
 export async function getProfile(): Promise<Profile> {
-  if (isDemo()) return getStore().profile
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -97,16 +86,6 @@ export async function getProfile(): Promise<Profile> {
 }
 
 export async function updateProfile(patch: Partial<Profile>): Promise<Profile> {
-  if (isDemo()) {
-    const store = getStore()
-    const updated: Profile = { ...store.profile, ...patch, updated_at: new Date().toISOString() }
-    updateStore((s) => {
-      s.profile = updated
-      const idx = s.team.findIndex((t) => t.id === updated.id)
-      if (idx >= 0) s.team[idx] = updated
-    })
-    return updated
-  }
   const { data, error } = await supabase
     .from('profiles')
     .update(patch)
@@ -118,7 +97,6 @@ export async function updateProfile(patch: Partial<Profile>): Promise<Profile> {
 }
 
 export async function listTeam(): Promise<Profile[]> {
-  if (isDemo()) return getStore().team
   const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true })
   if (error) throw new Error(messageFromError(error, 'Failed to load team'))
   return (data as Profile[]) ?? []
@@ -127,27 +105,6 @@ export async function listTeam(): Promise<Profile[]> {
 export async function addTeamMember(
   input: Pick<Profile, 'first_name' | 'last_name' | 'email' | 'role'> & Partial<Profile>
 ): Promise<Profile> {
-  if (isDemo()) {
-    const business = getStore().business
-    const member: Profile = {
-      id: nextId('profile'),
-      user_id: nextId('user'),
-      business_id: business.id,
-      first_name: input.first_name,
-      last_name: input.last_name,
-      email: input.email,
-      phone: input.phone,
-      role: input.role,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    updateStore((s) => {
-      s.team.push(member)
-      s.business.team_size = s.team.length
-    })
-    return member
-  }
-
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('profiles')
@@ -166,19 +123,6 @@ export async function addTeamMember(
 }
 
 export async function updateTeamMember(id: string, patch: Partial<Pick<Profile, 'first_name' | 'last_name' | 'email' | 'phone' | 'role'>>): Promise<Profile | null> {
-  if (isDemo()) {
-    let result: Profile | null = null
-    updateStore((s) => {
-      const idx = s.team.findIndex((t) => t.id === id)
-      if (idx < 0) return
-      const updated = { ...s.team[idx], ...patch, updated_at: new Date().toISOString() }
-      s.team[idx] = updated
-      if (s.profile.id === id) s.profile = updated
-      result = updated
-    })
-    return result
-  }
-
   const { data, error } = await supabase
     .from('profiles')
     .update(patch)
@@ -190,13 +134,6 @@ export async function updateTeamMember(id: string, patch: Partial<Pick<Profile, 
 }
 
 export async function removeTeamMember(id: string): Promise<void> {
-  if (isDemo()) {
-    updateStore((s) => {
-      s.team = s.team.filter((t) => t.id !== id)
-      s.business.team_size = s.team.length
-    })
-    return
-  }
   const { error } = await supabase.from('profiles').delete().eq('id', id)
   if (error) throw new Error(messageFromError(error, 'Failed to remove team member'))
 }
@@ -204,15 +141,6 @@ export async function removeTeamMember(id: string): Promise<void> {
 const DASHBOARD_CONFIG_KEY = 'dashboard_config'
 
 export async function getDashboardConfig(): Promise<DashboardConfigJSON | null> {
-  if (isDemo()) {
-    const row = getStore().settings.find((s) => s.key === DASHBOARD_CONFIG_KEY)
-    if (!row?.value) return null
-    try {
-      return JSON.parse(row.value) as DashboardConfigJSON
-    } catch {
-      return null
-    }
-  }
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('settings')
@@ -231,24 +159,6 @@ export async function getDashboardConfig(): Promise<DashboardConfigJSON | null> 
 
 export async function saveDashboardConfig(config: DashboardConfigJSON): Promise<void> {
   const value = JSON.stringify(config)
-  if (isDemo()) {
-    updateStore((s) => {
-      const idx = s.settings.findIndex((row) => row.key === DASHBOARD_CONFIG_KEY)
-      if (idx >= 0) {
-        s.settings[idx] = { ...s.settings[idx], value, updated_at: new Date().toISOString() }
-      } else {
-        s.settings.push({
-          id: 'settings-' + DASHBOARD_CONFIG_KEY,
-          business_id: s.business.id,
-          key: DASHBOARD_CONFIG_KEY,
-          value,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-      }
-    })
-    return
-  }
   const businessId = await getCurrentBusinessId()
   const { data: existing } = await supabase
     .from('settings')
@@ -270,19 +180,73 @@ export async function saveDashboardConfig(config: DashboardConfigJSON): Promise<
   }
 }
 
-export function resetDemoData(): boolean {
-  if (!isDemoMode()) return false
-  resetStore()
-  return true
-}
-
-export async function persistBusinessToSupabase(_business: Business): Promise<void> {
-  if (isDemoMode()) return
-  await supabase.from('businesses').upsert(_business)
-}
-
 export const ROLE_LABELS: Record<UserRole, string> = {
   owner: 'Owner',
   manager: 'Manager',
   staff: 'Staff',
+}
+
+const MESSAGE_FROM_KEY = 'message_from'
+
+async function upsertSetting(businessId: string, key: string, value: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from('settings')
+    .select('id')
+    .eq('business_id', businessId)
+    .eq('key', key)
+    .maybeSingle()
+  if (existing?.id) {
+    const { error } = await supabase
+      .from('settings')
+      .update({ value, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+    if (error) throw new Error(messageFromError(error, 'Failed to save settings.'))
+  } else {
+    const { error } = await supabase
+      .from('settings')
+      .insert({ business_id: businessId, key, value })
+    if (error) throw new Error(messageFromError(error, 'Failed to save settings.'))
+  }
+}
+
+export function defaultMessageConfig(): MessageConfig {
+  return {
+    sender_name: '',
+    from_email: null,
+    reply_to_email: null,
+    sms_sender_name: null,
+  }
+}
+
+export async function getMessageConfig(): Promise<MessageConfig> {
+  const businessId = await getCurrentBusinessId()
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('business_id', businessId)
+    .eq('key', MESSAGE_FROM_KEY)
+    .maybeSingle()
+  if (error) throw new Error(messageFromError(error, 'Failed to load messaging settings.'))
+  if (!data?.value) return defaultMessageConfig()
+  try {
+    return { ...defaultMessageConfig(), ...(JSON.parse(data.value) as Partial<MessageConfig>) }
+  } catch {
+    return defaultMessageConfig()
+  }
+}
+
+export async function saveMessageConfig(config: MessageConfig): Promise<void> {
+  const businessId = await getCurrentBusinessId()
+  await upsertSetting(businessId, MESSAGE_FROM_KEY, JSON.stringify(config))
+}
+
+/**
+ * Which provider the Edge Function will actually use. Driven by
+ * `VITE_MESSAGE_PROVIDER` (client hint only); the function falls back to
+ * dry-run when no provider key is present server-side.
+ */
+export function getMessageProvidersConfig(): MessageProvidersConfig {
+  const provider: MessageProvidersConfig['email']['provider'] =
+    import.meta.env.VITE_MESSAGE_PROVIDER === 'resend' ? 'resend' : 'dryrun'
+  return { email: { provider, configured: provider === 'resend' } }
 }

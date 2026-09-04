@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn'
-import { Loader2 } from 'lucide-react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { Spinner } from '@/components/ui/Spinner'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
 type Size = 'sm' | 'md' | 'lg'
@@ -55,7 +55,7 @@ export function Button({
       disabled={disabled || loading}
       {...props}
     >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
+      {loading ? <Spinner size="sm" /> : icon}
       {children}
     </button>
   )

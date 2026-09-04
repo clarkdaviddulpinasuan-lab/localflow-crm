@@ -26,11 +26,12 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
       <div
         className={cn(
           'relative bg-white rounded-xl shadow-xl border border-surface-200 w-full mx-4',
+          'max-h-[90vh] flex flex-col',
           'animate-in fade-in zoom-in-95 duration-200',
           sizeStyles[size]
         )}
       >
-        <div className="flex items-start justify-between p-6 pb-0">
+        <div className="flex items-start justify-between p-6 pb-4">
           <div>
             <h2 className="text-lg font-semibold text-surface-900">{title}</h2>
             {description && <p className="text-sm text-surface-500 mt-0.5">{description}</p>}
@@ -42,7 +43,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-6 pt-0 overflow-y-auto">{children}</div>
       </div>
     </div>
   )

@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore, updateStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock, setTable } from '@/test/supabaseMock'
 import { generateInsights } from '@/services/insightService'
 
 describe('insight service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('generates insights only from real store data', async () => {
@@ -20,13 +21,14 @@ describe('insight service', () => {
   })
 
   it('reports insufficient data for an empty business instead of fabricating', async () => {
-    updateStore((s) => {
-      s.customers = []
-      s.bookings = []
-      s.tasks = []
-      s.leads = []
-      s.orders = []
-    })
+    setTable('customers', [])
+    setTable('bookings', [])
+    setTable('tasks', [])
+    setTable('leads', [])
+    setTable('orders', [])
+    setTable('activities', [])
+    setTable('follow_ups', [])
+    setTable('communications', [])
     const insights = await generateInsights(30)
     expect(insights).toHaveLength(1)
     expect(insights[0].id).toBe('insufficient_data')

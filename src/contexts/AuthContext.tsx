@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase, isDemoMode } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { Business, Profile, UserRole } from '@/types'
-import { demoBusiness, demoProfile } from '@/data/demo'
 
 interface AuthContextValue {
   user: { id: string; email: string } | null
@@ -9,7 +8,6 @@ interface AuthContextValue {
   business: Business | null
   role: UserRole | null
   loading: boolean
-  isDemo: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
@@ -22,17 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [business, setBusiness] = useState<Business | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const demo = isDemoMode()
-
   useEffect(() => {
-    if (demo) {
-      setUser({ id: 'demo-user', email: demoProfile.email })
-      setProfile(demoProfile)
-      setBusiness(demoBusiness)
-      setLoading(false)
-      return
-    }
-
     async function loadProfileAndBusiness(userId: string, _email: string) {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -59,9 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
           setUser({ id: session.user.id, email: session.user.email ?? '' })
-          if (!isDemoMode()) {
-            await loadProfileAndBusiness(session.user.id, session.user.email ?? '')
-          }
+          await loadProfileAndBusiness(session.user.id, session.user.email ?? '')
         }
       } catch {
         setUser(null)
@@ -74,9 +60,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session ? { id: session.user.id, email: session.user.email ?? '' } : null)
-      if (session && !isDemoMode()) {
+      if (session) {
         loadProfileAndBusiness(session.user.id, session.user.email ?? '')
-      } else if (!session) {
+      } else {
         setProfile(null)
         setBusiness(null)
       }
@@ -85,34 +71,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription?.subscription.unsubscribe()
     }
-  }, [demo])
+  }, [])
 
-  const signIn = useCallback(
-    async (emailValue: string, passwordValue: string) => {
-      if (demo) {
-        setUser({ id: 'demo-user', email: emailValue || demoProfile.email })
-        setProfile(demoProfile)
-        setBusiness(demoBusiness)
-        return
-      }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailValue,
-        password: passwordValue,
-      })
-      if (error) throw error
-    },
-    [demo]
-  )
+  const signIn = useCallback(async (emailValue: string, passwordValue: string) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailValue,
+      password: passwordValue,
+    })
+    if (error) throw error
+  }, [])
 
   const signOut = useCallback(async () => {
-    if (demo) {
-      setUser(null)
-      setProfile(null)
-      setBusiness(null)
-      return
-    }
     await supabase.auth.signOut()
-  }, [demo])
+  }, [])
 
   const value = useMemo(
     () => ({
@@ -121,11 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       business,
       role: profile?.role ?? null,
       loading,
-      isDemo: demo,
       signIn,
       signOut,
     }),
-    [user, profile, business, loading, demo, signIn, signOut]
+    [user, profile, business, loading, signIn, signOut]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

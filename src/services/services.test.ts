@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { resetStore } from '@/services/demoStore'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+vi.mock('@/lib/supabase', () => import('@/test/supabaseMock').then((m) => ({ supabase: m.supabaseMock })))
+import { resetSupabaseMock } from '@/test/supabaseMock'
 import {
   listCustomers,
   getCustomer,
@@ -21,7 +22,7 @@ import { getStatusBadge } from '@/components/ui/Badge'
 
 describe('customer service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   it('lists seeded customers', async () => {
@@ -67,7 +68,7 @@ describe('customer service', () => {
 
 describe('booking service', () => {
   beforeEach(() => {
-    resetStore()
+    resetSupabaseMock()
   })
 
   function makeBooking() {

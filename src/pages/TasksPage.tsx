@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Plus, ClipboardList, CheckCircle2, LayoutList, LayoutGrid } from 'lucide-react'
+import { Plus, ClipboardList, CheckCircle2, LayoutList, LayoutGrid } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -9,6 +9,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Badge, getStatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Field'
+import { SearchInput } from '@/components/ui/SearchInput'
 import { SavedViewsMenu, type SavedViewState } from '@/components/SavedViewsMenu'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { TaskForm, type TaskFormData } from '@/features/tasks/TaskForm'
@@ -41,6 +42,7 @@ export function TasksPage() {
   const [modalOpen, setModalOpen] = useState(searchParams.get('new') === '1' || false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [saving, setSaving] = useState(false)
+  const [suggestions, setSuggestions] = useState<Task[]>([])
 
   const defaultCustomerId = searchParams.get('customer') ?? undefined
 
@@ -68,6 +70,13 @@ export function TasksPage() {
       setCustomers(res.data.map((c) => ({ value: c.id, label: `${c.first_name} ${c.last_name}` })))
     })
   }, [])
+
+  useEffect(() => {
+    setSuggestions([])
+    listTasks({ perPage: 9999, filters: { status: status || undefined, priority: priority || undefined } })
+      .then((res) => setSuggestions(res.data))
+      .catch(() => setSuggestions([]))
+  }, [status, priority])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -225,15 +234,15 @@ export function TasksPage() {
       <Card padding={false}>
         <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
+            <SearchInput<Task>
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              onChange={(v) => { setSearch(v); setPage(1) }}
+              items={suggestions}
+              getLabel={(t) => t.title}
+              getMatchText={(t) => `${t.title} ${t.description ?? ''} ${customerName(t.customer_id ?? undefined)}`}
+              getSubLabel={(t) => (t.customer_id ? customerName(t.customer_id) : undefined)}
               placeholder="Search tasks..."
-              className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-surface-200 bg-surface-50 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-colors"
+              noResultsMessage="No tasks match your search"
             />
           </div>
           <div className="flex gap-3 items-center">

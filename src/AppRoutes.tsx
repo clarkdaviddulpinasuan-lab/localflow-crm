@@ -36,9 +36,7 @@ function namedPage<M extends { [K in N]: ComponentType }, N extends keyof M>(imp
 const OverviewPage = namedPage(() => import('@/pages/OverviewPage'), 'OverviewPage')
 const CustomersPage = namedPage(() => import('@/pages/CustomersPage'), 'CustomersPage')
 const CustomerProfilePage = namedPage(() => import('@/pages/CustomerProfilePage'), 'CustomerProfilePage')
-const SegmentsPage = namedPage(() => import('@/pages/SegmentsPage'), 'SegmentsPage')
 const TemplatesPage = namedPage(() => import('@/pages/TemplatesPage'), 'TemplatesPage')
-const AvailabilityPage = namedPage(() => import('@/pages/AvailabilityPage'), 'AvailabilityPage')
 const BookingsPage = namedPage(() => import('@/pages/BookingsPage'), 'BookingsPage')
 const OrdersPage = namedPage(() => import('@/pages/OrdersPage'), 'OrdersPage')
 const TasksPage = namedPage(() => import('@/pages/TasksPage'), 'TasksPage')
@@ -52,6 +50,7 @@ const ActivityPage = namedPage(() => import('@/pages/ActivityPage'), 'ActivityPa
 const NotificationsPage = namedPage(() => import('@/pages/NotificationsPage'), 'NotificationsPage')
 const BusinessProfilePage = namedPage(() => import('@/pages/BusinessProfilePage'), 'BusinessProfilePage')
 const SettingsPage = namedPage(() => import('@/pages/SettingsPage'), 'SettingsPage')
+const ResourcesPage = namedPage(() => import('@/pages/ResourcesPage'), 'ResourcesPage')
 const LoginPage = namedPage(() => import('@/pages/LoginPage'), 'LoginPage')
 const SignupPage = namedPage(() => import('@/pages/SignupPage'), 'SignupPage')
 const ForgotPasswordPage = namedPage(() => import('@/pages/ForgotPasswordPage'), 'ForgotPasswordPage')
@@ -77,9 +76,7 @@ export function AppRoutes() {
       <Route path="/" element={routeElement(<OverviewPage />)} />
       <Route path="/customers" element={routeElement(<CustomersPage />)} />
       <Route path="/customers/:id" element={routeElement(<CustomerProfilePage />)} />
-      <Route path="/segments" element={routeElement(<SegmentsPage />)} />
       <Route path="/templates" element={routeElement(<TemplatesPage />)} />
-      <Route path="/availability" element={routeElement(<AvailabilityPage />)} />
       <Route path="/bookings" element={routeElement(<BookingsPage />)} />
       <Route path="/orders" element={routeElement(<OrdersPage />)} />
       <Route path="/tasks" element={routeElement(<TasksPage />)} />
@@ -93,6 +90,7 @@ export function AppRoutes() {
       <Route path="/notifications" element={routeElement(<NotificationsPage />)} />
       <Route path="/business" element={routeElement(<BusinessProfilePage />)} />
       <Route path="/settings" element={routeElement(<SettingsPage />)} />
+      <Route path="/resources" element={routeElement(<ResourcesPage />)} />
 
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

@@ -10,8 +10,7 @@ import type { BusinessType, BookingStatus, OrderStatus, PaymentStatus } from '@/
 // Configuration can be overridden per-business at runtime via
 // the `dashboard_config` key in the settings table (see
 // settingsService.getDashboardConfig). The TypeScript defaults
-// below act as the fallback schema + source of truth for the
-// shape, and for demo mode.
+// below act as the fallback schema + source of truth.
 // ============================================================
 
 /** A single KPI card definition shown on the dashboard. */

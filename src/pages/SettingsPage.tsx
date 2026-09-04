@@ -1,25 +1,27 @@
 import { useEffect, useState } from 'react'
-import { Save, Trash2, RotateCcw } from 'lucide-react'
+import { Save, Trash2, Mail } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Field'
 import { useAuth } from '@/contexts/AuthContext'
-import { isDemoMode } from '@/lib/supabase'
 import {
   getProfile,
   updateProfile,
   getPreferences,
   savePreferences,
-  resetDemoData,
+  getMessageConfig,
+  saveMessageConfig,
+  defaultMessageConfig,
+  getMessageProvidersConfig,
   ROLE_LABELS,
   type Preferences,
 } from '@/services/settingsService'
 import { can } from '@/utils/permissions'
-import type { Profile } from '@/types'
+import type { MessageConfig, Profile } from '@/types'
 import { cn } from '@/lib/cn'
 
-type SettingsTab = 'profile' | 'preferences' | 'notifications' | 'data'
+type SettingsTab = 'profile' | 'preferences' | 'notifications' | 'messaging' | 'data'
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
@@ -50,9 +52,12 @@ export function SettingsPage() {
 
   const [p, setP] = useState<Profile | null>(null)
   const [prefs, setPrefs] = useState<Preferences>(() => getPreferences())
+  const [msgCfg, setMsgCfg] = useState<MessageConfig>(() => defaultMessageConfig())
+  const providers = getMessageProvidersConfig()
 
   useEffect(() => {
     getProfile().then(setP)
+    getMessageConfig().then(setMsgCfg)
   }, [])
 
   const canManageSettings = can(role, 'manage:settings')
@@ -61,6 +66,7 @@ export function SettingsPage() {
     { value: 'profile', label: 'My Profile' },
     { value: 'preferences', label: 'Preferences' },
     { value: 'notifications', label: 'Notification Settings' },
+    { value: 'messaging', label: 'Messaging' },
     { value: 'data', label: 'Data & Safety' },
   ]
 
@@ -71,13 +77,6 @@ export function SettingsPage() {
 
   function handleSavePreferences() {
     savePreferences(prefs)
-  }
-
-  function handleReset() {
-    if (window.confirm('Reset all demo data to the original sample dataset? This cannot be undone.')) {
-      resetDemoData()
-      window.location.reload()
-    }
   }
 
   return (
@@ -179,37 +178,76 @@ export function SettingsPage() {
         </Card>
       )}
 
+      {tab === 'messaging' && (
+        <div className="space-y-6">
+          <Card>
+            <h3 className="text-lg font-semibold text-surface-900 mb-1 flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary-600" /> Email & SMS from your business
+            </h3>
+            <p className="text-sm text-surface-500 mb-5">
+              This is the identity customers see when you message them. Add a verified
+              sender address in Resend for real email delivery — until then messages are
+              recorded as delivered (dry-run) and logged by the Edge Function.
+            </p>
+
+            {providers && (
+              <div className="mb-5 flex flex-wrap gap-2">
+                <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border',
+                  providers.email.configured ? 'text-success-700 bg-success-50 border-success-200' : 'text-surface-600 bg-surface-100 border-surface-200')}>
+                  Email provider: {providers.email.configured ? 'Resend (live)' : 'Dry-run (not configured)'}
+                </span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <Input
+                label="Sender name"
+                hint="Shown as the display name on emails and SMS."
+                value={msgCfg.sender_name}
+                onChange={(e) => setMsgCfg({ ...msgCfg, sender_name: e.target.value })}
+                disabled={!canManageSettings}
+              />
+              <Input
+                label="From / sender email"
+                hint="Must be on a domain verified in Resend (e.g. bookings@mail.yourdomain.ph)."
+                type="email"
+                value={msgCfg.from_email ?? ''}
+                onChange={(e) => setMsgCfg({ ...msgCfg, from_email: e.target.value || null })}
+                disabled={!canManageSettings}
+              />
+              <Input
+                label="Reply-to email"
+                hint="Optional; if blank, replies go to the sender email."
+                type="email"
+                value={msgCfg.reply_to_email ?? ''}
+                onChange={(e) => setMsgCfg({ ...msgCfg, reply_to_email: e.target.value || null })}
+                disabled={!canManageSettings}
+              />
+            </div>
+            <div className="mt-6 pt-5 border-t border-surface-200 flex justify-end">
+              <Button
+                disabled={!canManageSettings}
+                icon={<Save className="h-4 w-4" />}
+                onClick={() => saveMessageConfig(msgCfg)}
+              >
+                Save Messaging Settings
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {tab === 'data' && (
         <div className="space-y-6">
           <Card>
             <h3 className="text-lg font-semibold text-surface-900 mb-2">Data & Safety</h3>
             <p className="text-sm text-surface-600 leading-relaxed">
-              You are currently using {isDemoMode() ? 'demo mode' : 'the connected Supabase backend'}. In demo mode, all data is
-              stored locally in your browser for demonstration purposes.
+              Your data is securely stored in the connected Supabase backend.
               {business && (
                 <span className="block mt-2">Connected business: <span className="font-medium text-surface-900">{business.name}</span></span>
               )}
             </p>
           </Card>
-
-          {isDemoMode() && (
-            <Card className="border-danger-200">
-              <div className="flex items-start gap-3">
-                <div className="h-9 w-9 rounded-lg bg-danger-50 text-danger-600 flex items-center justify-center shrink-0">
-                  <RotateCcw className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-surface-900">Reset demo data</h3>
-                  <p className="text-sm text-surface-600 mt-1">
-                    Restore the database to the original sample dataset. All your changes will be lost.
-                  </p>
-                  <Button variant="danger" icon={<Trash2 className="h-4 w-4" />} className="mt-4" onClick={handleReset}>
-                    Reset Demo Data
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
 
           <Card className={cn(!canManageSettings && 'hidden')}>
             <h3 className="text-base font-semibold text-danger-600 flex items-center gap-2">

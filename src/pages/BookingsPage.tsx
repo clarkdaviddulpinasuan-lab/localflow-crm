@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, Plus, CalendarCheck } from 'lucide-react'
+import { Plus, CalendarCheck, Send, LogIn, LogOut } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -9,28 +9,51 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Badge, getStatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Field'
+import { SearchInput } from '@/components/ui/SearchInput'
 import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { BookingForm, type BookingFormData } from '@/features/bookings/BookingForm'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatDateSpan } from '@/utils/format'
 import {
   listBookings,
   createBooking,
   updateBooking,
   cancelBooking,
   deleteBooking,
+  checkIn,
+  checkOut,
   bookingSearchFields,
 } from '@/services/bookingService'
-import { listCustomers } from '@/services/customerService'
+import { listCustomers, getCustomer } from '@/services/customerService'
 import { listOrders } from '@/services/orderService'
+import { sendCommunication } from '@/services/communicationService'
+import { getBusiness } from '@/services/settingsService'
+import { renderTemplate, bookingTemplateValues } from '@/services/templateService'
 import type { Booking, Order } from '@/types'
 import { useBusiness } from '@/contexts/BusinessContext'
+
+const CONFIRM_TEMPLATE = {
+  subject: 'Booking confirmation — {{resource}}',
+  body: `Hi {{customer}},
+
+This is your booking confirmation for {{business}}.
+
+Resource: {{resource}}
+Date: {{date}}
+Time: {{start_time}} – {{end_time}}
+Guests: {{guests}}
+Total: {{amount}}
+
+We look forward to seeing you!
+
+— {{business}}`,
+}
 
 export function BookingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { terminology } = useBusiness()
   const [data, setData] = useState<Booking[]>([])
-  const [customers, setCustomers] = useState<{ value: string; label: string }[]>([])
+  const [customers, setCustomers] = useState<{ value: string; label: string; email: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
@@ -47,7 +70,30 @@ export function BookingsPage() {
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [staySaving, setStaySaving] = useState(false)
   const [bookingOrders, setBookingOrders] = useState<Order[]>([])
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [sendingConfirm, setSendingConfirm] = useState(false)
+  const [confirmMessage, setConfirmMessage] = useState('')
+  const [suggestions, setSuggestions] = useState<Booking[]>([])
+
+  const customerNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    customers.forEach((c) => map.set(c.value, c.label))
+    return map
+  }, [customers])
+
+  // Load the full record set (respecting non-search filters) to power the
+  // autocomplete suggestions dropdown.
+  useEffect(() => {
+    setSuggestions([])
+    listBookings({
+      perPage: 9999,
+      filters: { status: status || undefined },
+    })
+      .then((res) => setSuggestions(res.data))
+      .catch(() => setSuggestions([]))
+  }, [status])
 
   const defaultCustomerId = searchParams.get('customer') ?? undefined
 
@@ -74,7 +120,7 @@ export function BookingsPage() {
     const customerList = listCustomers({ perPage: 9999 })
     customerList.then((res) => {
       setCustomers(
-        res.data.map((c) => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }))
+        res.data.map((c) => ({ value: c.id, label: `${c.first_name} ${c.last_name}`, email: c.email ?? null }))
       )
     })
   }, [])
@@ -92,6 +138,43 @@ export function BookingsPage() {
     const map = new Map(customers.map((c) => [c.value, c.label]))
     return (id: string) => map.get(id) ?? 'Unknown'
   }, [customers])
+
+  const customerEmail = useMemo(() => {
+    const map = new Map(customers.map((c) => [c.value, c.email]))
+    return (id: string) => map.get(id) ?? null
+  }, [customers])
+
+  async function openConfirmSend() {
+    if (!detailBooking) return
+    setConfirmMessage('')
+    setConfirmOpen(true)
+  }
+
+  async function handleSendConfirmation() {
+    if (!detailBooking) return
+    const customer = await getCustomer(detailBooking.customer_id)
+    if (!customer?.email) {
+      setConfirmMessage('This customer has no email address on file.')
+      return
+    }
+    setSendingConfirm(true)
+    setConfirmMessage('')
+    try {
+      const biz = await getBusiness()
+      const { subject, body } = renderTemplate(CONFIRM_TEMPLATE, bookingTemplateValues(customer, detailBooking, biz))
+      await sendCommunication({
+        customer_id: customer.id,
+        channel: 'email',
+        subject,
+        body,
+      })
+      setConfirmMessage('Confirmation email sent.')
+    } catch (err) {
+      setConfirmMessage(`Could not send: ${err instanceof Error ? err.message : 'unknown error'}`)
+    } finally {
+      setSendingConfirm(false)
+    }
+  }
 
   function handleSort(key: string) {
     if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -140,6 +223,18 @@ export function BookingsPage() {
     await loadData()
   }
 
+  async function handleCheckInOut(action: typeof checkIn | typeof checkOut) {
+    if (!detailBooking) return
+    setStaySaving(true)
+    try {
+      const updated = await action(detailBooking.id)
+      setDetailBooking(updated)
+      await loadData()
+    } finally {
+      setStaySaving(false)
+    }
+  }
+
   useEffect(() => {
     if (!detailBooking) {
       setBookingOrders([])
@@ -170,7 +265,8 @@ export function BookingsPage() {
         key: 'date',
         header: 'Date',
         sortable: true,
-        render: (r) => <span>{new Date(r.date + 'T00:00:00').toLocaleDateString()}</span>,
+        sortValue: (r) => r.date,
+        render: (r) => <span>{formatDateSpan(r.date, r.end_date)}</span>,
       },
       {
         key: 'status',
@@ -203,7 +299,7 @@ export function BookingsPage() {
     <div className="space-y-6">
       <PageHeader
         title={terminology.entitiesPlural}
-        description={`Manage your ${terminology.bookingLabel.toLowerCase()}s and availability.`}
+        description={`Manage your ${terminology.bookingLabel.toLowerCase()}s and their schedule.`}
         actions={
           <Button
             icon={<Plus className="h-4 w-4" />}
@@ -222,15 +318,17 @@ export function BookingsPage() {
       <Card padding={false}>
         <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
+            <SearchInput<Booking>
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+              onChange={(v) => { setSearch(v); setPage(1) }}
+              items={suggestions}
+              getLabel={(b) => `${customerNameMap.get(b.customer_id) ?? 'Customer'} • ${b.resource}`}
+              getMatchText={(b) =>
+                `${customerNameMap.get(b.customer_id) ?? ''} ${b.resource} ${b.notes ?? ''} ${b.date} ${b.end_date ?? ''}`
+              }
+              getSubLabel={(b) => (b.end_date && b.end_date > b.date ? `${b.date} → ${b.end_date}` : b.date)}
               placeholder={`Search by ${terminology.resourceLabel.toLowerCase()} or notes...`}
-              className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-surface-200 bg-surface-50 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-colors"
+              noResultsMessage={`No ${terminology.bookingLabel.toLowerCase()}s match your search`}
             />
           </div>
           <Select
@@ -314,11 +412,17 @@ export function BookingsPage() {
               </Badge>
             </div>
             <dl className="text-sm space-y-2 border-t border-surface-100 pt-4">
-              <div className="flex justify-between"><dt className="text-surface-500">Date</dt><dd className="font-medium text-surface-900">{new Date(detailBooking.date + 'T00:00:00').toLocaleDateString()}</dd></div>
+              <div className="flex justify-between"><dt className="text-surface-500">Date</dt><dd className="font-medium text-surface-900">{formatDateSpan(detailBooking.date, detailBooking.end_date)}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Time</dt><dd className="font-medium text-surface-900">{detailBooking.start_time} – {detailBooking.end_time}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Guests</dt><dd className="font-medium text-surface-900">{detailBooking.guests}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Amount</dt><dd className="font-semibold text-surface-900">{formatCurrency(detailBooking.amount)}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Payment</dt><dd><Badge variant={getStatusBadge(detailBooking.payment_status).variant}>{getStatusBadge(detailBooking.payment_status).label}</Badge></dd></div>
+              {detailBooking.check_in_date && (
+                <div className="flex justify-between"><dt className="text-surface-500">Checked in</dt><dd className="font-medium text-success-700">{detailBooking.check_in_date} {detailBooking.check_in_time}</dd></div>
+              )}
+              {detailBooking.check_out_date && (
+                <div className="flex justify-between"><dt className="text-surface-500">Checked out</dt><dd className="font-medium text-surface-900">{detailBooking.check_out_date} {detailBooking.check_out_time}</dd></div>
+              )}
               {detailBooking.notes && (
                 <div className="flex justify-between"><dt className="text-surface-500">Notes</dt><dd className="font-medium text-surface-900 max-w-[60%] text-right">{detailBooking.notes}</dd></div>
               )}
@@ -349,14 +453,34 @@ export function BookingsPage() {
                 Edit
               </Button>
               <Button
-                icon={<Plus className="h-4 w-4" />}
-                onClick={() => {
-                  const url = `/orders?booking=${detailBooking.id}&customer=${detailBooking.customer_id}&new=1`
-                  window.location.href = url
-                }}
+                variant="secondary"
+                icon={<Send className="h-4 w-4" />}
+                title={customerEmail(detailBooking.customer_id) ? undefined : 'This customer has no email address on file'}
+                disabled={!customerEmail(detailBooking.customer_id)}
+                onClick={openConfirmSend}
               >
-                Record order
+                Send confirmation
               </Button>
+              {!detailBooking.check_in_date && detailBooking.status !== 'cancelled' && (
+                <Button
+                  variant="secondary"
+                  icon={<LogIn className="h-4 w-4" />}
+                  disabled={staySaving}
+                  onClick={() => handleCheckInOut(checkIn)}
+                >
+                  {staySaving ? 'Saving…' : 'Check in'}
+                </Button>
+              )}
+              {detailBooking.check_in_date && !detailBooking.check_out_date && detailBooking.status !== 'cancelled' && (
+                <Button
+                  variant="secondary"
+                  icon={<LogOut className="h-4 w-4" />}
+                  disabled={staySaving}
+                  onClick={() => handleCheckInOut(checkOut)}
+                >
+                  {staySaving ? 'Saving…' : 'Check out'}
+                </Button>
+              )}
               {detailBooking.status !== 'cancelled' && (
                 <Button variant="secondary" onClick={() => setCancelOpen(true)}>Cancel booking</Button>
               )}
@@ -364,6 +488,24 @@ export function BookingsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Send confirmation email" size="sm">
+        <p className="text-sm text-surface-600 mb-4">
+          Send the standard booking confirmation for this {terminology.mainEntity} to{' '}
+          <span className="font-medium text-surface-900">{detailBooking ? customerName(detailBooking.customer_id) : ''}</span>?
+        </p>
+        {confirmMessage && (
+          <p className={confirmMessage.startsWith('Confirmation') ? 'text-sm text-success-700 mb-4' : 'text-sm text-danger-600 mb-4'}>
+            {confirmMessage}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Close</Button>
+          <Button disabled={sendingConfirm} icon={<Send className="h-4 w-4" />} onClick={handleSendConfirmation}>
+            {sendingConfirm ? 'Sending…' : 'Send now'}
+          </Button>
+        </div>
       </Modal>
 
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Confirm" size="sm">

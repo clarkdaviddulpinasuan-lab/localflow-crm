@@ -3,6 +3,7 @@ import { Save, Compass, Palette } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 import { Input, Select } from '@/components/ui/Field'
 import { useBusiness } from '@/contexts/BusinessContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -84,7 +85,11 @@ export function BusinessProfilePage() {
     return (
       <div className="space-y-6">
         <PageHeader title="Business Profile" description="Manage your business identity and preferences." />
-        <Card><div className="py-10 text-center text-sm text-surface-500">Loading business profile...</div></Card>
+        <Card>
+          <div className="py-10 flex justify-center">
+            <Spinner className="gap-3" label="Loading business profile…" />
+          </div>
+        </Card>
       </div>
     )
   }

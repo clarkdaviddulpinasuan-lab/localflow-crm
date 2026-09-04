@@ -1,5 +1,5 @@
 ﻿-- LocalFlow CRM - Apply latest migrations to an existing project
--- This file runs migrations 007-010 for projects that were set up earlier.
+-- This file runs migrations 007-015 for projects that were set up earlier.
 -- It is safe to re-run. Paste the whole file into the Supabase SQL editor.
 
 -- ============================================================
@@ -228,4 +228,139 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ============================================================
+-- SOURCE: 011_message_delivery.sql
+-- ============================================================
+-- LocalFlow CRM - Message delivery pipeline (Phase: Real Messaging)
+-- Additive migration: communications track real provider delivery.
+-- messages are queued as 'pending', then an Edge Function sends them and
+-- updates status to 'delivered' (or 'failed' with an error message).
+
+do $$ begin
+  alter type public.communication_status add value if not exists 'pending';
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter type public.communication_status add value if not exists 'delivered';
+exception when duplicate_object then null; end $$;
+
+alter table public.communications
+  add column if not exists provider text,
+  add column if not exists provider_message_id text,
+  add column if not exists error text,
+  add column if not exists delivered_at timestamptz;
+
+create index if not exists idx_communications_status on public.communications(status);
+
+-- The send-message Edge Function updates the row's delivery state as the
+-- calling user, so it needs a business-scoped UPDATE policy (008 only granted
+-- select/insert/delete).
+drop policy if exists "communications_update_business" on public.communications;
+create policy "communications_update_business"
+  on public.communications for update
+  using (business_id = public.current_business_id());
+
+-- ============================================================
+-- SOURCE: 012_resources.sql
+-- ============================================================
+-- LocalFlow CRM - Add resources table (bookable resources: rooms, tables, etc.)
+
+create table if not exists public.resources (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses(id) on delete cascade,
+  name        text not null,
+  type        text not null default 'resource',
+  color       text,
+  active      boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists idx_resources_business_id on public.resources(business_id);
+create index if not exists idx_resources_name on public.resources(business_id, name);
+create index if not exists idx_resources_active on public.resources(business_id, active);
+
+alter table public.resources enable row level security;
+
+drop policy if exists "resources_select_business" on public.resources;
+create policy "resources_select_business" on public.resources
+  for select using (business_id = public.current_business_id());
+drop policy if exists "resources_insert_business" on public.resources;
+create policy "resources_insert_business" on public.resources
+  for insert with check (business_id = public.current_business_id());
+drop policy if exists "resources_update_business" on public.resources;
+create policy "resources_update_business" on public.resources
+  for update using (business_id = public.current_business_id());
+drop policy if exists "resources_delete_business" on public.resources;
+create policy "resources_delete_business" on public.resources
+  for delete using (business_id = public.current_business_id());
+
+-- ============================================================
+-- SOURCE: 013_booking_items.sql
+-- ============================================================
+-- LocalFlow CRM - Add booking_items table (line items charged to a booking/stay)
+
+create table if not exists public.booking_items (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses(id) on delete cascade,
+  booking_id  uuid not null references public.bookings(id) on delete cascade,
+  name        text not null,
+  quantity    integer not null default 1,
+  unit_price  numeric(12,2) not null default 0,
+  total       numeric(12,2) not null generated always as (quantity * unit_price) stored,
+  category    text,
+  notes       text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists idx_booking_items_business_id on public.booking_items(business_id);
+create index if not exists idx_booking_items_booking_id on public.booking_items(booking_id);
+
+alter table public.booking_items enable row level security;
+
+drop policy if exists "booking_items_select_business" on public.booking_items;
+create policy "booking_items_select_business" on public.booking_items
+  for select using (business_id = public.current_business_id());
+drop policy if exists "booking_items_insert_business" on public.booking_items;
+create policy "booking_items_insert_business" on public.booking_items
+  for insert with check (business_id = public.current_business_id());
+drop policy if exists "booking_items_update_business" on public.booking_items;
+create policy "booking_items_update_business" on public.booking_items
+  for update using (business_id = public.current_business_id());
+drop policy if exists "booking_items_delete_business" on public.booking_items;
+create policy "booking_items_delete_business" on public.booking_items
+  for delete using (business_id = public.current_business_id());
+
+-- ============================================================
+-- SOURCE: 014_booking_check_in_out.sql
+-- ============================================================
+-- LocalFlow CRM - Add check-in / check-out tracking columns to bookings.
+
+alter table public.bookings
+  add column if not exists check_in_date  date,
+  add column if not exists check_in_time  time,
+  add column if not exists check_out_date date,
+  add column if not exists check_out_time time;
+
+create index if not exists idx_bookings_check_in on public.bookings(check_in_date);
+create index if not exists idx_bookings_check_out on public.bookings(check_out_date);
+
+-- ============================================================
+-- SOURCE: 015_multi_day_dates.sql
+-- ============================================================
+-- LocalFlow CRM - Allow bookings and orders to span multiple days.
+-- bookings.date remains the start day; end_date is NULL for single-day.
+-- orders gain optional start_date / end_date.
+
+alter table public.bookings
+  add column if not exists end_date date;
+
+alter table public.orders
+  add column if not exists start_date date,
+  add column if not exists end_date  date;
+
+create index if not exists idx_bookings_end_date on public.bookings(end_date);
+create index if not exists idx_orders_start_date on public.orders(start_date);
 

@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard,
   Users,
-  Users2,
+
   CalendarCheck,
   ShoppingCart,
   ClipboardList,
@@ -11,13 +11,13 @@ import {
   BarChart3,
   Zap,
   Mail,
-  CalendarClock,
   UsersRound,
   Activity,
   Bell,
   Building2,
   Settings,
   UserCircle,
+  Layers,
 } from 'lucide-react'
 import type { NavLabels } from '@/config/businessTypes'
 
@@ -37,9 +37,9 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: 'Overview', path: '/', icon: LayoutDashboard },
       { label: 'Customers', path: '/customers', icon: Users },
-      { label: 'Segments', path: '/segments', icon: Users2 },
+
       { label: 'Bookings', path: '/bookings', icon: CalendarCheck },
-      { label: 'Availability', path: '/availability', icon: CalendarClock },
+      { label: 'Resources', path: '/resources', icon: Layers },
       { label: 'Orders', path: '/orders', icon: ShoppingCart },
       { label: 'Tasks', path: '/tasks', icon: ClipboardList },
       { label: 'Calendar', path: '/calendar', icon: CalendarDays },

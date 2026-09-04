@@ -29,7 +29,7 @@ interface BusinessContextValue {
   currency: string
   timezone: string
   config: BusinessTypeConfig
-  /** Persist an updated config to the settings table (no-op in demo). */
+  /** Persist an updated config to the settings table. */
   updateConfig: (patch: Partial<BusinessTypeConfig>) => Promise<void>
 }
 

@@ -1,29 +1,19 @@
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
 import { recalcCustomerStats } from '@/services/customerService'
+import { logActivity } from '@/services/activityService'
 import type { Order, PaginatedResponse } from '@/types'
-import { applyQuery, type QueryParams } from '@/utils/query'
+import type { QueryParams } from '@/utils/query'
 
 export const orderSearchFields: (keyof Order)[] = ['order_number', 'items', 'staff_member']
 
-function logActivity(
-  s: DemoStore,
-  action: string,
-  entityType: string,
-  entityId: string,
-  description: string
-) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action,
-    entity_type: entityType,
-    entity_id: entityId,
-    description,
-    created_at: new Date().toISOString(),
-  })
+// Human-friendly " for DD/MM/YYYY" or " from DD/MM/YYYY to DD/MM/YYYY" text.
+function orderDates(input: { start_date?: string | null; end_date?: string | null }): string {
+  const start = input.start_date
+  const end = input.end_date
+  if (start && end && end > start) return ` from ${start} to ${end}`
+  if (start) return ` on ${start}`
+  return ''
 }
 
 async function listFromSupabase(params: QueryParams<Order> = {}): Promise<PaginatedResponse<Order>> {
@@ -60,29 +50,16 @@ async function listFromSupabase(params: QueryParams<Order> = {}): Promise<Pagina
 }
 
 export async function listOrders(params: QueryParams<Order> = {}): Promise<PaginatedResponse<Order>> {
-  if (isDemo()) return applyQuery(getStore().orders, params)
   return listFromSupabase(params)
 }
 
 export async function getOrder(id: string): Promise<Order | undefined> {
-  if (isDemo()) return getStore().orders.find((o) => o.id === id)
   const { data, error } = await supabase.from('orders').select('*').eq('id', id).maybeSingle()
   if (error) throw new Error(messageFromError(error, 'Failed to load order'))
   return (data as Order) ?? undefined
 }
 
 export async function nextOrderNumber(): Promise<string> {
-  if (isDemo()) {
-    const existing = getStore().orders
-    const year = new Date().getFullYear()
-    const max = existing.reduce((mx, o) => {
-      const match = o.order_number.match(new RegExp(`ORD-${year}-(\\d+)$`))
-      if (match) return Math.max(mx, parseInt(match[1], 10))
-      return mx
-    }, 0)
-    return `ORD-${year}-${String(max + 1).padStart(3, '0')}`
-  }
-
   const year = new Date().getFullYear()
   const { data, error } = await supabase
     .from('orders')
@@ -106,24 +83,6 @@ export async function createOrder(
     order_number?: string
   }
 ): Promise<Order> {
-  if (isDemo()) {
-    const now = new Date().toISOString()
-    const order: Order = {
-      id: nextId('ord'),
-      business_id: getStore().business.id,
-      order_number: input.order_number || (await nextOrderNumber()),
-      ...input,
-      created_at: now,
-      updated_at: now,
-    }
-    updateStore((s) => {
-      s.orders.unshift(order)
-      logActivity(s, 'created', 'order', order.id, `Order ${order.order_number} created (${order.items})`)
-    })
-    await recalcCustomerStats(order.customer_id)
-    return order
-  }
-
   const order_number = input.order_number || (await nextOrderNumber())
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
@@ -135,6 +94,8 @@ export async function createOrder(
       order_number,
       items: input.items,
       description: input.description ?? null,
+      start_date: input.start_date ? input.start_date : null,
+      end_date: input.end_date ? input.end_date : null,
       total: input.total,
       payment_status: input.payment_status ?? 'pending',
       status: input.status ?? 'new',
@@ -144,22 +105,16 @@ export async function createOrder(
     .single()
   if (error) throw new Error(messageFromError(error, 'Failed to create order'))
   await recalcCustomerStats(input.customer_id)
+  await logActivity({
+    action: 'created',
+    entity_type: 'order',
+    entity_id: input.customer_id,
+    description: `Order ${order_number} created${orderDates(input)}`,
+  })
   return data as Order
 }
 
 export async function updateOrder(id: string, input: Partial<Order>): Promise<Order> {
-  if (isDemo()) {
-    const existing = getStore().orders.find((o) => o.id === id)
-    if (!existing) throw new Error('Order not found')
-    const updated: Order = { ...existing, ...input, id, updated_at: new Date().toISOString() }
-    updateStore((s) => {
-      s.orders = s.orders.map((o) => (o.id === id ? updated : o))
-      logActivity(s, 'updated', 'order', id, `Order ${updated.order_number} updated`)
-    })
-    await recalcCustomerStats(existing.customer_id)
-    return updated
-  }
-
   const { data, error } = await supabase
     .from('orders')
     .update(input)
@@ -169,28 +124,32 @@ export async function updateOrder(id: string, input: Partial<Order>): Promise<Or
   if (error) throw new Error(messageFromError(error, 'Failed to update order'))
   if (!data) notFound('Order')
   await recalcCustomerStats(data.customer_id)
+  await logActivity({
+    action: 'updated',
+    entity_type: 'order',
+    entity_id: data.customer_id,
+    description: `Order ${data.order_number} updated${orderDates(data)}`,
+  })
   return data as Order
 }
 
 export async function deleteOrder(id: string): Promise<void> {
-  let customerId: string | undefined
-  if (isDemo()) {
-    const existing = getStore().orders.find((o) => o.id === id)
-    customerId = existing?.customer_id
-    updateStore((s) => {
-      s.orders = s.orders.filter((o) => o.id !== id)
-    })
-    if (customerId) await recalcCustomerStats(customerId)
-    return
-  }
   const { data: existing, error: fetchErr } = await supabase
     .from('orders')
     .select('customer_id')
     .eq('id', id)
     .maybeSingle()
   if (fetchErr) throw new Error(messageFromError(fetchErr, 'Failed to load order'))
-  customerId = existing?.customer_id
+  const customerId = existing?.customer_id
   const { error } = await supabase.from('orders').delete().eq('id', id)
   if (error) throw new Error(messageFromError(error, 'Failed to delete order'))
-  if (customerId) await recalcCustomerStats(customerId)
+  if (customerId) {
+    await recalcCustomerStats(customerId)
+    await logActivity({
+      action: 'deleted',
+      entity_type: 'order',
+      entity_id: customerId,
+      description: 'Order deleted',
+    })
+  }
 }

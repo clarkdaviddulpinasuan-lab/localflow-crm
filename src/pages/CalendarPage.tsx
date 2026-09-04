@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge, getStatusBadge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
+import { formatDateSpan } from '@/utils/format'
 import {
   type CalendarView,
   type CalendarEvent,
@@ -16,7 +17,7 @@ import {
   eventInView,
   shiftDate,
   viewTitle,
-  bookingToEvent,
+  bookingToEvents,
 } from '@/utils/calendar'
 import { listBookings } from '@/services/bookingService'
 import { listTasks } from '@/services/taskService'
@@ -51,7 +52,7 @@ export function CalendarPage() {
         listBookings({ perPage: 9999 }),
         listTasks({ perPage: 9999 }),
       ])
-      const bookingEvents = bookingsRes.data.map(bookingToEvent)
+      const bookingEvents = bookingsRes.data.flatMap(bookingToEvents)
       const taskEvents: CalendarEvent[] = tasksRes.data.map((t) => ({
         id: t.id,
         date: t.due_date,
@@ -278,7 +279,7 @@ export function CalendarPage() {
             </div>
             <p className="text-surface-600">{customerName(detailBooking.customer_id)}</p>
             <dl className="space-y-1.5">
-              <div className="flex justify-between"><dt className="text-surface-500">Date</dt><dd className="font-medium text-surface-900">{new Date(detailBooking.date + 'T00:00:00').toLocaleDateString()}</dd></div>
+              <div className="flex justify-between"><dt className="text-surface-500">Date</dt><dd className="font-medium text-surface-900">{formatDateSpan(detailBooking.date, detailBooking.end_date)}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Time</dt><dd className="font-medium text-surface-900">{detailBooking.start_time} – {detailBooking.end_time}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Guests</dt><dd className="font-medium text-surface-900">{detailBooking.guests}</dd></div>
             </dl>

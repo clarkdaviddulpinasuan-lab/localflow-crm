@@ -1,5 +1,3 @@
-import { nextId } from '@/services/demoStore'
-
 export type SavedViewPage = 'customers' | 'orders' | 'leads' | 'tasks'
 
 export interface SavedViewState {
@@ -47,7 +45,7 @@ export function saveSavedView(
   state: SavedViewState
 ): SavedView {
   const view: SavedView = {
-    id: nextId('view'),
+    id: crypto.randomUUID(),
     page,
     name: name.trim() || 'Untitled view',
     state,

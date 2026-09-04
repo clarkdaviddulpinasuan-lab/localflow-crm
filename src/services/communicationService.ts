@@ -1,26 +1,12 @@
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
+import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
 import { notify } from '@/services/notificationService'
 import type { Communication, PaginatedResponse, TemplateChannel } from '@/types'
-import { applyQuery, type QueryParams } from '@/utils/query'
+import type { QueryParams } from '@/utils/query'
 import { getProfile } from '@/services/settingsService'
 
 export function normalizeBody(body: string): string {
   return body.replace(/\r\n/g, '\n').replace(/\s{2,}/g, ' ').trim()
-}
-
-function logActivity(s: DemoStore, channel: TemplateChannel, customerId: string, body: string) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action: 'sent',
-    entity_type: 'communication',
-    entity_id: customerId,
-    description: `${channel === 'email' ? 'Email' : 'SMS'} sent: ${body.slice(0, 120)}`,
-    created_at: new Date().toISOString(),
-  })
 }
 
 async function listFromSupabase(params: QueryParams<Communication> = {}): Promise<PaginatedResponse<Communication>> {
@@ -45,10 +31,40 @@ async function listFromSupabase(params: QueryParams<Communication> = {}): Promis
 }
 
 export async function listCommunications(params: QueryParams<Communication> = {}): Promise<PaginatedResponse<Communication>> {
-  if (isDemo()) return applyQuery(getStore().communications, params)
   return listFromSupabase(params)
 }
 
+async function getCommunication(id: string): Promise<Communication | null> {
+  const { data, error } = await supabase
+    .from('communications')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(messageFromError(error, 'Failed to load communication.'))
+  return (data as Communication) ?? null
+}
+
+async function markFailed(id: string, errorMessage: string): Promise<void> {
+  const { error } = await supabase
+    .from('communications')
+    .update({ status: 'failed', error: errorMessage })
+    .eq('id', id)
+  if (error) throw new Error(messageFromError(error, 'Failed to update communication.'))
+}
+
+/**
+ * Hand the queued communication to the send-message Edge Function, which ships
+ * it through the configured provider and records the delivery result on the row.
+ */
+export async function dispatchCommunication(id: string): Promise<void> {
+  await supabase.functions.invoke('send-message', { body: { communication_id: id } })
+}
+
+/**
+ * Queue a message to a customer and dispatch it immediately. The inserted row
+ * starts as 'pending'; the Edge Function flips it to 'delivered' or 'failed'.
+ * Returns the refreshed row so callers see the delivery outcome.
+ */
 export async function sendCommunication(input: {
   customer_id: string
   channel: TemplateChannel
@@ -60,35 +76,6 @@ export async function sendCommunication(input: {
   const body = normalizeBody(input.body)
   const now = new Date().toISOString()
 
-  if (isDemo()) {
-    const communication: Communication = {
-      id: nextId('com'),
-      business_id: getStore().business.id,
-      customer_id: input.customer_id,
-      channel: input.channel,
-      template_id: input.template_id ?? null,
-      subject: input.channel === 'email' ? input.subject ?? null : null,
-      body,
-      status: 'sent',
-      sent_at: now,
-    }
-    updateStore((s) => {
-      s.communications.unshift(communication)
-      logActivity(s, input.channel, input.customer_id, body)
-    })
-    const profile = getStore().profile
-    await notify({
-      user_id: profile.user_id,
-      business_id: profile.business_id,
-      title: `${input.channel === 'email' ? 'Email' : 'SMS'} sent`,
-      message: body.slice(0, 160),
-      type: 'customer',
-      entity_type: 'customer',
-      entity_id: input.customer_id,
-    })
-    return communication
-  }
-
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('communications')
@@ -99,21 +86,39 @@ export async function sendCommunication(input: {
       template_id: input.template_id ?? null,
       subject: input.channel === 'email' ? input.subject ?? null : null,
       body,
-      status: 'sent',
+      status: 'pending',
       sent_at: now,
     })
     .select()
     .single()
   if (error) throw new Error(messageFromError(error, 'Failed to log communication.'))
+  const queued = data as Communication
+
+  try {
+    await dispatchCommunication(queued.id)
+  } catch (err) {
+    await markFailed(queued.id, messageFromError(err as { message?: string }, 'Failed to send message.'))
+    throw new Error(messageFromError(err as { message?: string }, 'Failed to send message.'))
+  }
+
+  const refreshed = await getCommunication(queued.id)
   const profile = await getProfile()
   await notify({
     user_id: profile.user_id,
     business_id: businessId,
-    title: `${input.channel === 'email' ? 'Email' : 'SMS'} sent`,
+    title: `${input.channel === 'email' ? 'Email' : 'SMS'} ${refreshed?.status === 'failed' ? 'failed to send' : 'sent'}`,
     message: body.slice(0, 160),
     type: 'customer',
     entity_type: 'customer',
     entity_id: input.customer_id,
   })
-  return data as Communication
+  return (refreshed ?? queued) as Communication
+}
+
+/**
+ * Send a rendered message to an arbitrary address (used by "Test send"). No
+ * customer row is required and nothing is persisted to the communications ledger.
+ */
+export async function sendTestEmail(input: { subject: string; body: string; to: string }): Promise<void> {
+  await supabase.functions.invoke('send-test-email', { body: input })
 }

@@ -1,13 +1,13 @@
 import { addDays, format, startOfDay, subDays } from 'date-fns'
-import { getStore, updateStore, nextId, type DemoStore } from '@/services/demoStore'
-import { isDemo, getCurrentBusinessId, messageFromError } from '@/lib/dataClient'
+import { getCurrentBusinessId, messageFromError } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
 import { listTasks, createTask } from '@/services/taskService'
 import { listBookings } from '@/services/bookingService'
 import { listLeads } from '@/services/leadService'
-import { listCustomers } from '@/services/customerService'
+import { listCustomers, getCustomer } from '@/services/customerService'
 import { createFollowUp } from '@/services/followUpService'
 import { notify } from '@/services/notificationService'
+import { sendCommunication } from '@/services/communicationService'
 import { getProfile } from '@/services/settingsService'
 import type { AutomationRule, AutomationEvent, AutomationTriggerType, AutomationActionType } from '@/types'
 
@@ -23,6 +23,7 @@ export const ACTION_LABELS: Record<AutomationActionType, string> = {
   create_task: 'Create task',
   create_follow_up: 'Create follow-up',
   notify_user: 'Send notification',
+  send_email: 'Send email',
   log_activity: 'Log activity',
 }
 
@@ -75,15 +76,6 @@ function todayISO(): string {
 }
 
 export async function getRules(): Promise<AutomationRule[]> {
-  if (isDemo()) {
-    const row = getStore().settings.find((s) => s.key === RULES_KEY)
-    if (!row?.value) return DEFAULT_RULES
-    try {
-      return JSON.parse(row.value) as AutomationRule[]
-    } catch {
-      return DEFAULT_RULES
-    }
-  }
   const businessId = await getCurrentBusinessId()
   const { data, error } = await supabase
     .from('settings')
@@ -102,24 +94,6 @@ export async function getRules(): Promise<AutomationRule[]> {
 
 export async function saveRules(rules: AutomationRule[]): Promise<void> {
   const value = JSON.stringify(rules)
-  if (isDemo()) {
-    updateStore((s) => {
-      const idx = s.settings.findIndex((row) => row.key === RULES_KEY)
-      if (idx >= 0) {
-        s.settings[idx] = { ...s.settings[idx], value, updated_at: new Date().toISOString() }
-      } else {
-        s.settings.push({
-          id: 'settings-' + RULES_KEY,
-          business_id: s.business.id,
-          key: RULES_KEY,
-          value,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-      }
-    })
-    return
-  }
   const businessId = await getCurrentBusinessId()
   const { data: existing } = await supabase
     .from('settings')
@@ -135,7 +109,6 @@ export async function saveRules(rules: AutomationRule[]): Promise<void> {
     if (error) throw new Error(messageFromError(error, 'Failed to save automation rules.'))
   } else {
     const { error } = await supabase.from('settings').insert({
-      id: nextId('settings'),
       business_id: businessId,
       key: RULES_KEY,
       value,
@@ -196,7 +169,7 @@ async function collectEvents(rule: AutomationRule, customers: { id: string; firs
       const until = format(addDays(today, rule.triggerDays), 'yyyy-MM-dd')
       const res = await listBookings({ perPage: 200 })
       return res.data
-        .filter((b) => b.status === 'confirmed' && b.date >= todayS && b.date <= until)
+        .filter((b) => b.status === 'confirmed' && (b.date >= todayS && b.date <= until || (b.end_date && b.end_date >= todayS && b.end_date <= until)))
         .map((b) => ({
           type: 'upcoming_booking' as const,
           id: b.id,
@@ -238,26 +211,23 @@ async function collectEvents(rule: AutomationRule, customers: { id: string; firs
   }
 }
 
-function logMarker(s: DemoStore, rule: AutomationRule, event: AutomationEvent, nonce: string, description: string) {
-  s.activities.unshift({
-    id: nextId('act'),
-    business_id: s.business.id,
-    user_id: s.profile.user_id,
-    action: 'automation',
-    entity_type: event.type,
-    entity_id: event.id,
-    description,
-    metadata: { automation: rule.id, nonce },
-    created_at: new Date().toISOString(),
-  })
-}
-
 async function alreadyApplied(nonce: string): Promise<boolean> {
-  if (isDemo()) return getStore().activities.some((a) => a.metadata?.nonce === nonce)
-
   const { data, error } = await supabase.from('activities').select('id').eq('metadata.nonce', nonce).limit(1)
   if (error) throw new Error(messageFromError(error, 'Failed to check automation history.'))
   return (data ?? []).length > 0
+}
+
+async function logAutomationActivity(profile: { id: string; business_id: string }, event: AutomationEvent, message: string, nonce: string, ruleId: string) {
+  const { error } = await supabase.from('activities').insert({
+    business_id: profile.business_id,
+    user_id: profile.id,
+    action: 'automation',
+    entity_type: event.type,
+    entity_id: event.id,
+    description: message,
+    metadata: { automation: ruleId, nonce },
+  })
+  if (error) throw new Error(messageFromError(error, 'Failed to log automation activity.'))
 }
 
 async function applyAction(rule: AutomationRule, event: AutomationEvent, nonce: string): Promise<string> {
@@ -296,22 +266,24 @@ async function applyAction(rule: AutomationRule, event: AutomationEvent, nonce: 
       result = `Sent notification “${message}”`
       break
     }
+    case 'send_email': {
+      if (!event.customerId) return `Skipped — no customer linked to “${event.title}”`
+      const customer = await getCustomer(event.customerId)
+      if (!customer?.email) {
+        return `Skipped — no email address for “${customer ? `${customer.first_name} ${customer.last_name}` : event.title}”`
+      }
+      await sendCommunication({
+        customer_id: customer.id,
+        channel: 'email',
+        subject: message.slice(0, 90),
+        body: message,
+      })
+      result = `Sent email “${message}”`
+      break
+    }
     case 'log_activity': {
       const profile = await getProfile()
-      if (isDemo()) {
-        updateStore((s) => logMarker(s, rule, event, nonce, message))
-      } else {
-        const { error } = await supabase.from('activities').insert({
-          business_id: profile.business_id,
-          user_id: profile.user_id,
-          action: 'automation',
-          entity_type: event.type,
-          entity_id: event.id,
-          description: message,
-          metadata: { automation: rule.id, nonce },
-        })
-        if (error) throw new Error(messageFromError(error, 'Failed to log automation activity.'))
-      }
+      await logAutomationActivity(profile, event, message, nonce, rule.id)
       result = `Logged activity “${message}”`
       break
     }
@@ -319,20 +291,7 @@ async function applyAction(rule: AutomationRule, event: AutomationEvent, nonce: 
 
   if (rule.actionType !== 'log_activity') {
     const profile = await getProfile()
-    if (isDemo()) {
-      updateStore((s) => logMarker(s, rule, event, nonce, message))
-    } else {
-      const { error } = await supabase.from('activities').insert({
-        business_id: profile.business_id,
-        user_id: profile.user_id,
-        action: 'automation',
-        entity_type: event.type,
-        entity_id: event.id,
-        description: message,
-        metadata: { automation: rule.id, nonce },
-      })
-      if (error) throw new Error(messageFromError(error, 'Failed to log automation activity.'))
-    }
+    await logAutomationActivity(profile, event, message, nonce, rule.id)
   }
 
   return result
@@ -371,5 +330,5 @@ export async function evaluateRules(): Promise<RuleOutcome[]> {
 }
 
 export function nextRuleId(): string {
-  return nextId('rule')
+  return crypto.randomUUID()
 }
