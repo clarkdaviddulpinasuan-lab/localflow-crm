@@ -1,5 +1,6 @@
 import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import { notify } from '@/services/notificationService'
 import type { Communication, PaginatedResponse, TemplateChannel } from '@/types'
 import type { QueryParams } from '@/utils/query'
@@ -25,7 +26,7 @@ async function listFromSupabase(params: QueryParams<Communication> = {}): Promis
   const perPage = params.perPage ?? 50
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load communications.'))
   return paginate((data as Communication[]) ?? [], count ?? 0, page, perPage)
 }
@@ -35,11 +36,9 @@ export async function listCommunications(params: QueryParams<Communication> = {}
 }
 
 async function getCommunication(id: string): Promise<Communication | null> {
-  const { data, error } = await supabase
-    .from('communications')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
+  const { data, error } = await withRetry(() =>
+    supabase.from('communications').select('*').eq('id', id).maybeSingle()
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load communication.'))
   return (data as Communication) ?? null
 }

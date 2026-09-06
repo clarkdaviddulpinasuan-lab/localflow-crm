@@ -1,5 +1,6 @@
 import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { Booking, Resource, PaginatedResponse } from '@/types'
 import type { QueryParams } from '@/utils/query'
 
@@ -33,7 +34,7 @@ async function listFromSupabase(params: QueryParams<Resource> = {}): Promise<Pag
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load resources'))
   return paginate((data as Resource[]) ?? [], count ?? 0, page, perPage)
 }
@@ -43,17 +44,15 @@ export async function listResources(params: QueryParams<Resource> = {}): Promise
 }
 
 export async function getActiveResources(): Promise<Resource[]> {
-  const { data, error } = await supabase
-    .from('resources')
-    .select('*')
-    .eq('active', true)
-    .order('name', { ascending: true })
+  const { data, error } = await withRetry(() =>
+    supabase.from('resources').select('*').eq('active', true).order('name', { ascending: true })
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load resources'))
   return (data as Resource[]) ?? []
 }
 
 export async function getResource(id: string): Promise<Resource | undefined> {
-  const { data, error } = await supabase.from('resources').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withRetry(() => supabase.from('resources').select('*').eq('id', id).maybeSingle())
   if (error) throw new Error(messageFromError(error, 'Failed to load resource'))
   return (data as Resource) ?? undefined
 }

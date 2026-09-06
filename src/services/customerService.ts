@@ -1,5 +1,6 @@
 import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import { logActivity } from '@/services/activityService'
 import type { Customer, CustomerNote, PaginatedResponse } from '@/types'
 import type { QueryParams } from '@/utils/query'
@@ -34,7 +35,7 @@ async function listFromSupabase(params: QueryParams<Customer> = {}): Promise<Pag
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load customers'))
   return paginate((data as Customer[]) ?? [], count ?? 0, page, perPage)
 }
@@ -44,7 +45,7 @@ export async function listCustomers(params: QueryParams<Customer> = {}): Promise
 }
 
 export async function getCustomer(id: string): Promise<Customer | undefined> {
-  const { data, error } = await supabase.from('customers').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withRetry(() => supabase.from('customers').select('*').eq('id', id).maybeSingle())
   if (error) throw new Error(messageFromError(error, 'Failed to load customer'))
   return (data as Customer) ?? undefined
 }
@@ -116,11 +117,9 @@ export async function deleteCustomer(id: string): Promise<void> {
 }
 
 export async function getCustomerNotes(customerId: string): Promise<CustomerNote[]> {
-  const { data, error } = await supabase
-    .from('customer_notes')
-    .select('*')
-    .eq('customer_id', customerId)
-    .order('created_at', { ascending: false })
+  const { data, error } = await withRetry(() =>
+    supabase.from('customer_notes').select('*').eq('customer_id', customerId).order('created_at', { ascending: false })
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load customer notes'))
   return (data as CustomerNote[]) ?? []
 }
@@ -147,8 +146,8 @@ export async function addCustomerNote(customerId: string, content: string): Prom
 // record changes so the amount is always in sync everywhere.
 export async function recalcTotalSpent(customerId: string): Promise<void> {
   const [bookingsRes, ordersRes] = await Promise.all([
-    supabase.from('bookings').select('amount,status,payment_status').eq('customer_id', customerId),
-    supabase.from('orders').select('total,status,payment_status').eq('customer_id', customerId),
+    withRetry(() => supabase.from('bookings').select('amount,status,payment_status').eq('customer_id', customerId)),
+    withRetry(() => supabase.from('orders').select('total,status,payment_status').eq('customer_id', customerId)),
   ])
   if (bookingsRes.error) throw new Error(messageFromError(bookingsRes.error, 'Failed to load bookings'))
   if (ordersRes.error) throw new Error(messageFromError(ordersRes.error, 'Failed to load orders'))
@@ -172,8 +171,8 @@ export async function recalcTotalSpent(customerId: string): Promise<void> {
 // a non-cancelled booking (or order). Kept in sync wherever total spent is.
 export async function recalcVisitCount(customerId: string): Promise<void> {
   const [bookingsRes, ordersRes] = await Promise.all([
-    supabase.from('bookings').select('date,end_date,status').eq('customer_id', customerId),
-    supabase.from('orders').select('start_date,end_date,status').eq('customer_id', customerId),
+    withRetry(() => supabase.from('bookings').select('date,end_date,status').eq('customer_id', customerId)),
+    withRetry(() => supabase.from('orders').select('start_date,end_date,status').eq('customer_id', customerId)),
   ])
   if (bookingsRes.error) throw new Error(messageFromError(bookingsRes.error, 'Failed to load bookings'))
   if (ordersRes.error) throw new Error(messageFromError(ordersRes.error, 'Failed to load orders'))

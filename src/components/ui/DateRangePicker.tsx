@@ -13,6 +13,7 @@ import {
 } from 'date-fns'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { weekStart } from '@/utils/calendar'
 
 export interface DateRange {
   start: string | null
@@ -58,8 +59,8 @@ export function DateRangePicker({ value, onChange, initialMonth, className }: Da
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(initial))
 
   const days = useMemo(() => {
-    const start = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: 0 })
-    const end = endOfWeek(endOfMonth(viewMonth), { weekStartsOn: 0 })
+    const start = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: weekStart() })
+    const end = endOfWeek(endOfMonth(viewMonth), { weekStartsOn: weekStart() })
     return eachDayOfInterval({ start, end })
   }, [viewMonth])
 
@@ -92,10 +93,6 @@ export function DateRangePicker({ value, onChange, initialMonth, className }: Da
     }
     // Both are set — start a fresh selection.
     commit({ start: iso, end: null })
-  }
-
-  function handleReset() {
-    commit({ start: null, end: null })
   }
 
   const startDate = toDate(range.start)
@@ -215,22 +212,6 @@ export function DateRangePicker({ value, onChange, initialMonth, className }: Da
             </button>
           )
         })}
-      </div>
-
-      {/* Footer: reset */}
-      <div className="mt-3 flex items-center">
-        <button
-          type="button"
-          onClick={handleReset}
-          disabled={!startDate}
-          className={cn(
-            'px-4 py-1.5 text-sm rounded-full border border-surface-300 text-surface-600',
-            'hover:bg-surface-50 transition-colors',
-            'disabled:opacity-40 disabled:pointer-events-none'
-          )}
-        >
-          Reset
-        </button>
       </div>
     </div>
   )

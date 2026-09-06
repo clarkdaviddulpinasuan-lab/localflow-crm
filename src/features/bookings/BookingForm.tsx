@@ -46,6 +46,7 @@ interface BookingFormProps {
   loading?: boolean
   customerOptions: { value: string; label: string }[]
   defaultCustomerId?: string
+  mobileBottomSheet?: boolean
 }
 
 export interface BookingFormData extends BookingFormValues {}
@@ -58,6 +59,7 @@ export function BookingForm({
   loading,
   customerOptions,
   defaultCustomerId,
+  mobileBottomSheet,
 }: BookingFormProps) {
   const { terminology } = useBusiness()
   const [dbResources, setDbResources] = useState<{ name: string; color?: string | null }[]>([])
@@ -75,6 +77,7 @@ export function BookingForm({
     notes: initial?.notes ?? '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof BookingFormValues, string>>>({})
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -108,7 +111,12 @@ export function BookingForm({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!validate()) return
-    await onSave(values)
+    setSaveError('')
+    try {
+      await onSave(values)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save. Please try again.')
+    }
   }
 
   const resourceColors = useMemo(() => {
@@ -133,6 +141,7 @@ export function BookingForm({
       description={terminology.bookingLabel === 'Reservation'
         ? 'Book a table for your customer.'
         : 'Schedule a stay for your guest.'}
+      mobileBottomSheet={mobileBottomSheet}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Select
@@ -194,7 +203,7 @@ export function BookingForm({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Input
             id="start_time"
-            label="Check-in / Start"
+            label="Check-in"
             type="time"
             required
             value={values.start_time}
@@ -203,7 +212,7 @@ export function BookingForm({
           />
           <Input
             id="end_time"
-            label="Check-out / End"
+            label="Check-out"
             type="time"
             value={values.end_time}
             onChange={(e) => set('end_time', e.target.value)}
@@ -254,6 +263,12 @@ export function BookingForm({
           placeholder="Optional notes about this booking"
           rows={3}
         />
+
+        {saveError && (
+          <p role="alert" className="rounded-[8px] bg-danger-50 px-3 py-2 text-sm text-danger-700">
+            {saveError}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>

@@ -13,9 +13,15 @@ import {
   isWithinInterval,
   parseISO,
 } from 'date-fns'
+import { getPreferences } from '@/services/settingsService'
 import type { Booking } from '@/types'
 
 export type CalendarView = 'month' | 'week' | 'day'
+
+// 1 for Monday, 0 for Sunday (date-fns `weekStartsOn`).
+export function weekStart(): 0 | 1 {
+  return getPreferences().weekStartsOn === 'sunday' ? 0 : 1
+}
 
 export interface CalendarEvent {
   id: string
@@ -30,14 +36,14 @@ export interface CalendarEvent {
 export function getViewDates(view: CalendarView, current: Date): Date[] {
   if (view === 'month') {
     return eachDayOfInterval({
-      start: startOfWeek(startOfMonth(current), { weekStartsOn: 1 }),
-      end: endOfWeek(endOfMonth(current), { weekStartsOn: 1 }),
+      start: startOfWeek(startOfMonth(current), { weekStartsOn: weekStart() }),
+      end: endOfWeek(endOfMonth(current), { weekStartsOn: weekStart() }),
     })
   }
   if (view === 'week') {
     return eachDayOfInterval({
-      start: startOfWeek(current, { weekStartsOn: 1 }),
-      end: endOfWeek(current, { weekStartsOn: 1 }),
+      start: startOfWeek(current, { weekStartsOn: weekStart() }),
+      end: endOfWeek(current, { weekStartsOn: weekStart() }),
     })
   }
   return [current]
@@ -76,8 +82,8 @@ export function shiftDate(current: Date, view: CalendarView, direction: 'prev' |
 export function viewTitle(view: CalendarView, current: Date): string {
   if (view === 'month') return format(current, 'MMMM yyyy')
   if (view === 'week') {
-    const start = startOfWeek(current, { weekStartsOn: 1 })
-    const end = endOfWeek(current, { weekStartsOn: 1 })
+    const start = startOfWeek(current, { weekStartsOn: weekStart() })
+    const end = endOfWeek(current, { weekStartsOn: weekStart() })
     return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`
   }
   return format(current, 'EEEE, MMMM d, yyyy')

@@ -1,5 +1,6 @@
 import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { FollowUp, PaginatedResponse } from '@/types'
 import type { QueryParams } from '@/utils/query'
 
@@ -27,7 +28,7 @@ async function listFromSupabase(params: QueryParams<FollowUp> = {}): Promise<Pag
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load follow-ups'))
   return paginate((data as FollowUp[]) ?? [], count ?? 0, page, perPage)
 }

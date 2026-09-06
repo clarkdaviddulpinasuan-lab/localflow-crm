@@ -19,9 +19,10 @@ import {
   viewTitle,
   bookingToEvents,
 } from '@/utils/calendar'
-import { listBookings } from '@/services/bookingService'
+import { listBookings, createBooking } from '@/services/bookingService'
 import { listTasks } from '@/services/taskService'
 import { listCustomers } from '@/services/customerService'
+import { BookingForm, type BookingFormData } from '@/features/bookings/BookingForm'
 import type { Booking, Task } from '@/types'
 import { useBusiness } from '@/contexts/BusinessContext'
 
@@ -45,24 +46,28 @@ export function CalendarPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailBooking, setDetailBooking] = useState<Booking | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [bookingSaving, setBookingSaving] = useState(false)
+  const [customerOptions, setCustomerOptions] = useState<{ value: string; label: string; email: string | null }[]>([])
+
+  async function reload() {
+    const [bookingsRes, tasksRes] = await Promise.all([
+      listBookings({ perPage: 9999 }),
+      listTasks({ perPage: 9999 }),
+    ])
+    const bookingEvents = bookingsRes.data.flatMap(bookingToEvents)
+    const taskEvents: CalendarEvent[] = tasksRes.data.map((t) => ({
+      id: t.id,
+      date: t.due_date,
+      title: t.title,
+      type: 'task',
+      status: t.status,
+    }))
+    setEvents([...bookingEvents, ...taskEvents])
+  }
 
   useEffect(() => {
-    async function load() {
-      const [bookingsRes, tasksRes] = await Promise.all([
-        listBookings({ perPage: 9999 }),
-        listTasks({ perPage: 9999 }),
-      ])
-      const bookingEvents = bookingsRes.data.flatMap(bookingToEvents)
-      const taskEvents: CalendarEvent[] = tasksRes.data.map((t) => ({
-        id: t.id,
-        date: t.due_date,
-        title: t.title,
-        type: 'task',
-        status: t.status,
-      }))
-      setEvents([...bookingEvents, ...taskEvents])
-    }
-    load()
+    reload()
   }, [])
 
   const days = getViewDates(view, current)
@@ -76,9 +81,23 @@ export function CalendarPage() {
         customersRes.data.map((c) => [c.id, `${c.first_name} ${c.last_name}`])
       )
       setCustomerName(() => (id: string) => map.get(id) ?? 'Unknown')
+      setCustomerOptions(
+        customersRes.data.map((c) => ({ value: c.id, label: `${c.first_name} ${c.last_name}`, email: c.email ?? null }))
+      )
     }
     loadCustomers()
   }, [])
+
+  async function handleCreateBooking(values: BookingFormData) {
+    setBookingSaving(true)
+    try {
+      await createBooking(values)
+      setBookingOpen(false)
+      await reload()
+    } finally {
+      setBookingSaving(false)
+    }
+  }
 
   async function openEvent(e: CalendarEvent) {
     if (e.type === 'booking') {
@@ -107,9 +126,7 @@ export function CalendarPage() {
         actions={
           <Button
             icon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              window.location.href = `/bookings?new=1`
-            }}
+            onClick={() => setBookingOpen(true)}
           >
             New {terminology.bookingLabel}
           </Button>
@@ -155,52 +172,166 @@ export function CalendarPage() {
         </div>
 
         {view === 'month' && (
-          <div className="grid grid-cols-7 gap-px bg-surface-100 border border-surface-100 rounded-lg overflow-hidden">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-              <div key={d} className="bg-white px-2 py-1.5 text-xs font-semibold text-surface-500 text-center border-b border-surface-100">
-                {d}
-              </div>
-            ))}
+          <>
+            <div className="md:hidden space-y-4">
             {days.map((date) => {
               const dayEvents = getEventsForDate(viewEvents, date)
+              if (dayEvents.length === 0) return null
               return (
-                <div
-                  key={date.toISOString()}
-                  className={cn(
-                    'bg-white min-h-24 p-1.5 border-b border-surface-50',
-                    !isCurrentMonth(date, current) && 'opacity-40',
-                    isToday(date) && 'bg-primary-50/50'
-                  )}
-                >
+                <div key={date.toISOString()} className="bg-white rounded-xl border border-surface-100 p-4 shadow-soft">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          'inline-flex items-center justify-center h-10 w-10 text-sm font-medium rounded-full',
+                          isToday(date) ? 'bg-primary-600 text-white' : 'bg-surface-100 text-surface-900'
+                        )}
+                      >
+                        {date.getDate()}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-surface-900">{date.toLocaleDateString('en-US', { weekday: 'long' })}</p>
+                        <p className="text-xs text-surface-500">{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                      </div>
+                    </div>
+                    {isToday(date) && <span className="text-xs font-medium bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">Today</span>}
+                  </div>
+                  <div className="space-y-2">
+                    {dayEvents.map((e) => (
+                      <button
+                        key={e.id}
+                        onClick={() => openEvent(e)}
+                        className={cn('w-full text-left px-3 py-2.5 rounded-lg border', eventColor(e))}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{e.title}</p>
+                            {e.subtitle && <p className="text-xs opacity-75">{e.subtitle}</p>}
+                          </div>
+                          {e.type === 'booking' && e.status && (
+                            <Badge variant={getStatusBadge(e.status).variant}>{getStatusBadge(e.status).label}</Badge>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="hidden md:block">
+            <div className="grid grid-cols-7 gap-px bg-surface-100 border border-surface-100 rounded-lg overflow-hidden">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                <div key={d} className="bg-white px-2 py-1.5 text-xs font-semibold text-surface-500 text-center border-b border-surface-100">
+                  {d}
+                </div>
+              ))}
+              {days.map((date) => {
+                const dayEvents = getEventsForDate(viewEvents, date)
+                return (
+                  <div
+                    key={date.toISOString()}
+                    className={cn(
+                      'bg-white min-h-[100px] p-1.5 border-b border-surface-50 md:min-h-24',
+                      !isCurrentMonth(date, current) && 'opacity-40',
+                      isToday(date) && 'bg-primary-50/50'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-flex items-center justify-center h-6 w-6 text-xs font-medium rounded-full',
+                        isToday(date) && 'bg-primary-600 text-white'
+                      )}
+                    >
+                      {date.getDate()}
+                    </span>
+                    <div className="mt-1 space-y-1">
+                      {dayEvents.slice(0, 3).map((e) => (
+                        <button
+                          key={e.id}
+                          onClick={() => openEvent(e)}
+                          className={cn(
+                            'w-full text-left text-[11px] px-1.5 py-0.5 rounded border truncate block',
+                            eventColor(e)
+                          )}
+                          title={e.title}
+                        >
+                          {e.type === 'booking' && e.time ? `${e.time} ` : ''}{e.title}
+                        </button>
+                      ))}
+                      {dayEvents.length > 3 && (
+                        <p className="text-[11px] text-surface-400 px-1.5">+{dayEvents.length - 3} more</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+        )}
+        {view === 'week' && (
+          <div className="grid grid-cols-7 gap-px bg-surface-100 border border-surface-100 rounded-lg overflow-hidden">
+            {days.map((date) => (
+              <div key={date.toISOString()} className="bg-white min-h-40 p-1.5">
+                <div className="text-center mb-2">
+                  <p className="text-xs text-surface-400">{date.toLocaleDateString('en-US', { weekday: 'short' })}</p>
                   <span
                     className={cn(
-                      'inline-flex items-center justify-center h-6 w-6 text-xs font-medium rounded-full',
+                      'inline-flex items-center justify-center h-6 w-6 text-xs font-medium rounded-full mt-0.5',
                       isToday(date) && 'bg-primary-600 text-white'
                     )}
                   >
                     {date.getDate()}
                   </span>
-                  <div className="mt-1 space-y-1">
-                    {dayEvents.slice(0, 3).map((e) => (
-                      <button
-                        key={e.id}
-                        onClick={() => openEvent(e)}
-                        className={cn(
-                          'w-full text-left text-[11px] px-1.5 py-0.5 rounded border truncate block',
-                          eventColor(e)
-                        )}
-                        title={e.title}
-                      >
-                        {e.type === 'booking' && e.time ? `${e.time} ` : ''}{e.title}
-                      </button>
-                    ))}
-                    {dayEvents.length > 3 && (
-                      <p className="text-[11px] text-surface-400 px-1.5">+{dayEvents.length - 3} more</p>
-                    )}
-                  </div>
                 </div>
-              )
-            })}
+                <div className="space-y-1">
+                  {getEventsForDate(viewEvents, date).map((e) => (
+                    <button
+                      key={e.id}
+                      onClick={() => openEvent(e)}
+                      className={cn('w-full text-left text-[11px] px-1.5 py-1 rounded border block', eventColor(e))}
+                    >
+                      {e.type === 'booking' && e.time ? `${e.time} ` : ''}{e.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {view === 'day' && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-surface-900">
+              {current.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </h3>
+            {viewEvents.length === 0 ? (
+              <div className="py-10 text-center text-sm text-surface-500">
+                <CalendarDays className="h-8 w-8 mx-auto mb-2 text-surface-300" />
+                No events scheduled for this day.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {viewEvents.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => openEvent(e)}
+                    className={cn('w-full text-left px-3 py-2.5 rounded-lg border', eventColor(e))}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{e.title}</p>
+                        {e.subtitle && <p className="text-xs opacity-75">{e.subtitle}</p>}
+                      </div>
+                      {e.type === 'booking' && e.status && (
+                        <Badge variant={getStatusBadge(e.status).variant}>{getStatusBadge(e.status).label}</Badge>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -270,6 +401,16 @@ export function CalendarPage() {
         )}
       </Card>
 
+      <BookingForm
+        key={bookingOpen ? 'open-new' : 'closed'}
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        onSave={handleCreateBooking}
+        loading={bookingSaving}
+        customerOptions={customerOptions}
+        mobileBottomSheet
+      />
+
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title="Event details" size="sm">
         {detailBooking && (
           <div className="space-y-3 text-sm">
@@ -283,7 +424,7 @@ export function CalendarPage() {
               <div className="flex justify-between"><dt className="text-surface-500">Time</dt><dd className="font-medium text-surface-900">{detailBooking.start_time} – {detailBooking.end_time}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Guests</dt><dd className="font-medium text-surface-900">{detailBooking.guests}</dd></div>
             </dl>
-            <Button onClick={() => { window.location.href = `/bookings?customer=${detailBooking.customer_id}` }} className="w-full">
+            <Button onClick={() => { window.location.href = `/bookings?view=${detailBooking.id}` }} className="w-full">
               View in Bookings
             </Button>
           </div>
@@ -299,7 +440,7 @@ export function CalendarPage() {
               <div className="flex justify-between"><dt className="text-surface-500">Due</dt><dd className="font-medium text-surface-900">{new Date(detailTask.due_date + 'T00:00:00').toLocaleDateString()}</dd></div>
               <div className="flex justify-between"><dt className="text-surface-500">Status</dt><dd><Badge variant={getStatusBadge(detailTask.status).variant}>{getStatusBadge(detailTask.status).label}</Badge></dd></div>
             </dl>
-            <Button onClick={() => { window.location.href = `/tasks?customer=${detailTask.customer_id ?? ''}` }} className="w-full">
+            <Button onClick={() => { window.location.href = `/tasks?edit=${detailTask.id}` }} className="w-full">
               View in Tasks
             </Button>
           </div>

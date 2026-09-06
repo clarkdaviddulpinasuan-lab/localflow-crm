@@ -119,6 +119,7 @@ interface CustomerFormProps {
   onSave: (values: CustomerFormValues) => Promise<void>
   initial?: Customer
   loading?: boolean
+  mobileBottomSheet?: boolean
 }
 
 export interface CustomerFormData extends CustomerFormValues {}
@@ -154,7 +155,7 @@ function SectionToggle({
   )
 }
 
-export function CustomerForm({ open, onClose, onSave, initial, loading }: CustomerFormProps) {
+export function CustomerForm({ open, onClose, onSave, initial, loading, mobileBottomSheet }: CustomerFormProps) {
   const { terminology } = useBusiness()
   const isCreate = !initial
 
@@ -303,6 +304,7 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
       onClose={onClose}
       title={initial ? 'Edit customer' : 'Add customer'}
       description={initial ? 'Update the customer details below.' : 'Add a new customer and optionally create a booking, order, or task.'}
+      mobileBottomSheet={mobileBottomSheet}
     >
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
         {/* Customer Info */}
@@ -430,7 +432,7 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Input
                     id="booking_start_time"
-                    label="Check-in / Start"
+                    label="Check-in"
                     type="time"
                     required
                     value={booking.start_time}
@@ -439,7 +441,7 @@ export function CustomerForm({ open, onClose, onSave, initial, loading }: Custom
                   />
                   <Input
                     id="booking_end_time"
-                    label="Check-out / End"
+                    label="Check-out"
                     type="time"
                     value={booking.end_time}
                     onChange={(e) => setBooking('end_time', e.target.value)}

@@ -50,7 +50,7 @@ export interface Profile {
   email: string
   phone?: string
   role: UserRole
-  avatar_url?: string
+  avatar_url?: string | null
   created_at: string
   updated_at: string
 }
@@ -198,6 +198,23 @@ export interface FollowUp {
   status: 'pending' | 'completed' | 'skipped'
   completed_at?: string | null
   created_by?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type InvitationStatus = 'pending' | 'accepted'
+
+export interface TeamInvite {
+  id: string
+  business_id: string
+  email: string
+  role: UserRole
+  token: string
+  invited_by: string
+  status: InvitationStatus
+  expires_at: string
+  accepted_at?: string | null
+  accepted_user_id?: string | null
   created_at: string
   updated_at: string
 }

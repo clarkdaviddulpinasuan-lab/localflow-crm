@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { Plus, ShoppingCart, Trash2, ChevronRight } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -19,6 +19,7 @@ import { listOrders, createOrder, updateOrder, deleteOrder, orderSearchFields } 
 import { getBookingItemsByBookingId, createBookingItem, deleteBookingItem } from '@/services/bookingItemService'
 import { listCustomers } from '@/services/customerService'
 import { listBookings } from '@/services/bookingService'
+import { getPreferences } from '@/services/settingsService'
 import type { Booking, BookingItem, Order } from '@/types'
 import { useBusiness } from '@/contexts/BusinessContext'
 
@@ -210,18 +211,21 @@ export function OrdersPage() {
         sortable: true,
         sortValue: (r) => customerName(r.customer_id),
         render: (r) => <span className="font-medium text-surface-900">{customerName(r.customer_id)}</span>,
+        mobilePriority: 1,
       },
       {
         key: 'items',
         header: 'Items',
         sortable: true,
         render: (r) => <span className="text-surface-700">{r.items}</span>,
+        mobilePriority: 2,
       },
       {
         key: 'status',
         header: 'Status',
         sortable: true,
         render: (r) => <Badge variant={getStatusBadge(r.status).variant}>{getStatusBadge(r.status).label}</Badge>,
+        mobilePriority: 1,
       },
       {
         key: 'payment_status',
@@ -229,12 +233,14 @@ export function OrdersPage() {
         sortable: true,
         render: (r) => <Badge variant={getStatusBadge(r.payment_status).variant}>{getStatusBadge(r.payment_status).label}</Badge>,
         hideOnMobile: true,
+        mobilePriority: 3,
       },
       {
         key: 'total',
         header: 'Total',
         sortable: true,
         render: (r) => <span className="font-semibold text-surface-900">{formatCurrency(r.total)}</span>,
+        mobilePriority: 1,
       },
       {
         key: 'dates',
@@ -242,6 +248,7 @@ export function OrdersPage() {
         sortable: true,
         sortValue: (r) => r.start_date ?? r.created_at,
         render: (r) => (r.start_date ? <span className="text-sm text-surface-700">{formatDateSpan(r.start_date, r.end_date)}</span> : <span className="text-surface-400">—</span>),
+        mobilePriority: 2,
       },
       {
         key: 'created',
@@ -265,9 +272,29 @@ export function OrdersPage() {
             </span>
           )
         },
+        hideOnMobile: true,
       },
     ],
     [customerName, bookingMap]
+  )
+
+  const mobileCardRender = (o: Order) => (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-medium text-surface-900">{o.order_number}</span>
+          <Badge variant={getStatusBadge(o.status).variant} className="text-[10px]">{getStatusBadge(o.status).label}</Badge>
+        </div>
+        <p className="font-medium text-surface-900 truncate mt-1">{customerName(o.customer_id)}</p>
+        <p className="text-xs text-surface-500 truncate">{o.items}</p>
+        <div className="flex items-center gap-2 mt-2">
+          <Badge variant={getStatusBadge(o.payment_status).variant} className="text-[10px]">{getStatusBadge(o.payment_status).label}</Badge>
+          <span className="text-[11px] text-surface-500">{o.start_date ? formatDateSpan(o.start_date, o.end_date) : 'No dates'}</span>
+          <span className="font-semibold text-surface-900">{formatCurrency(o.total)}</span>
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-surface-400 shrink-0" />
+    </div>
   )
 
   return (
@@ -325,6 +352,8 @@ export function OrdersPage() {
               onSort={handleSort}
               sortBy={sortBy}
               sortDir={sortDir}
+              mobileCardRender={mobileCardRender}
+              compact={getPreferences().compactLayout}
               emptyState={
                 <EmptyState
                   icon={<ShoppingCart className="h-6 w-6" />}
@@ -350,6 +379,7 @@ export function OrdersPage() {
         defaultCustomerId={editing ? undefined : defaultCustomerId}
         bookings={bookingOptions}
         defaultBookingId={editing ? undefined : defaultBookingId}
+        mobileBottomSheet
       />
 
       <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title={detailOrder?.order_number ?? 'Order details'} size="sm">

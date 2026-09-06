@@ -1,5 +1,6 @@
 import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { BookingItem, PaginatedResponse } from '@/types'
 import type { QueryParams } from '@/utils/query'
 
@@ -33,7 +34,7 @@ async function listFromSupabase(params: QueryParams<BookingItem> = {}): Promise<
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load booking items'))
   return paginate((data as BookingItem[]) ?? [], count ?? 0, page, perPage)
 }
@@ -43,11 +44,9 @@ export async function listBookingItems(params: QueryParams<BookingItem> = {}): P
 }
 
 export async function getBookingItemsByBookingId(bookingId: string): Promise<BookingItem[]> {
-  const { data, error } = await supabase
-    .from('booking_items')
-    .select('*')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: true })
+  const { data, error } = await withRetry(() =>
+    supabase.from('booking_items').select('*').eq('booking_id', bookingId).order('created_at', { ascending: true })
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load booking items'))
   return (data as BookingItem[]) ?? []
 }

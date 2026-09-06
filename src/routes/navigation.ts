@@ -14,7 +14,6 @@ import {
   UsersRound,
   Activity,
   Bell,
-  Building2,
   Settings,
   UserCircle,
   Layers,
@@ -61,7 +60,6 @@ export const navGroups: NavGroup[] = [
   {
     label: 'Administration',
     items: [
-      { label: 'Business Profile', path: '/business', icon: Building2 },
       { label: 'Settings', path: '/settings', icon: Settings },
     ],
   },

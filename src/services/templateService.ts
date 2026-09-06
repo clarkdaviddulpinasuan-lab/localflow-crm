@@ -1,5 +1,6 @@
 import { paginate, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { Booking, Customer, MessageTemplate, PaginatedResponse, TemplateChannel } from '@/types'
 import type { QueryParams } from '@/utils/query'
 
@@ -21,7 +22,7 @@ async function listFromSupabase(params: QueryParams<MessageTemplate> = {}): Prom
   const perPage = params.perPage ?? 50
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load templates.'))
   return paginate((data as MessageTemplate[]) ?? [], count ?? 0, page, perPage)
 }

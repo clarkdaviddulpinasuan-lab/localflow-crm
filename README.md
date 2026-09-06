@@ -65,7 +65,7 @@ npm run lint        # ESLint
 ## 🔌 Connecting Supabase
 
 1. Create a project at [app.supabase.com](https://app.supabase.com) and grab your URL + anon key.
-2. Run the migrations in `supabase/migrations/` in order (1 → 10) via the SQL Editor, or `supabase db push`.
+2. Run the migrations in `supabase/migrations/` in order (1 → 18) via the SQL Editor, or `supabase db push`.
 3. Copy `.env.example` to `.env` and set your credentials:
 
    ```env

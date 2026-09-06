@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -88,5 +90,97 @@ describe('Modal', () => {
       </Modal>
     )
     expect(screen.queryByText('Modal body')).not.toBeInTheDocument()
+  })
+
+  it('exposes the appropriate dialog semantics', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Edit booking">
+        <p>Modal body</p>
+      </Modal>
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit booking' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+  })
+
+  it('moves focus into the dialog when opened', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Edit booking">
+        <button>Save</button>
+      </Modal>
+    )
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
+  })
+
+  it('closes on Escape', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Edit booking">
+        <button>Save</button>
+      </Modal>
+    )
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('traps Tab within the dialog, wrapping at both ends', async () => {
+    const user = userEvent.setup()
+    render(
+      <Modal open onClose={vi.fn()} title="Edit booking">
+        <button id="first">First</button>
+        <button id="last">Last</button>
+      </Modal>
+    )
+    const close = screen.getByRole('button', { name: 'Close' })
+    const first = screen.getByRole('button', { name: 'First' })
+    const last = screen.getByRole('button', { name: 'Last' })
+
+    close.focus()
+    await user.tab()
+    expect(first).toHaveFocus()
+    await user.tab()
+    expect(last).toHaveFocus()
+    await user.tab()
+    expect(close).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(last).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(first).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(close).toHaveFocus()
+  })
+
+  it('restores focus to the trigger element on close', async () => {
+    const user = userEvent.setup()
+
+    function DialogHarness({ children }: { children: ReactNode }) {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Open dialog</button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Edit booking">
+            {children}
+          </Modal>
+        </>
+      )
+    }
+
+    render(
+      <DialogHarness>
+        <button>Save</button>
+      </DialogHarness>
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Open dialog' })
+    trigger.focus()
+    await user.click(trigger)
+
+    const close = screen.getByRole('button', { name: 'Close' })
+    expect(close).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+    expect(close).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 })

@@ -1,26 +1,31 @@
 import { supabase } from '@/lib/supabase'
 import { getCurrentBusinessId, messageFromError } from '@/lib/dataClient'
+import { withRetry } from '@/lib/withRetry'
 import type { Notification } from '@/types'
 
 export async function listNotifications(limit = 50): Promise<Notification[]> {
   const businessId = await getCurrentBusinessId()
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .eq('business_id', businessId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('notifications')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+  )
   if (error) throw new Error(messageFromError(error, 'Unable to load notifications.'))
   return (data ?? []) as Notification[]
 }
 
 export async function unreadCount(): Promise<number> {
   const businessId = await getCurrentBusinessId()
-  const { count, error } = await supabase
-    .from('notifications')
-    .select('*', { count: 'exact', head: true })
-    .eq('business_id', businessId)
-    .eq('read', false)
+  const { count, error } = await withRetry(() =>
+    supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('read', false)
+  )
   if (error) throw new Error(messageFromError(error, 'Unable to count notifications.'))
   return count ?? 0
 }

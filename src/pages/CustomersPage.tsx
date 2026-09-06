@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Plus, Download, Users } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Plus, Download, Users, ChevronRight, AlertTriangle, RotateCw } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -25,12 +25,16 @@ import {
 import { createBooking } from '@/services/bookingService'
 import { createOrder } from '@/services/orderService'
 import { createTask } from '@/services/taskService'
+import { getPreferences } from '@/services/settingsService'
 import type { Customer } from '@/types'
 
 export function CustomersPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [data, setData] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [type, setType] = useState('')
@@ -39,7 +43,7 @@ export function CustomersPage() {
   const [page, setPage] = useState(1)
   const [perPage] = useState(10)
   const [total, setTotal] = useState(0)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(searchParams.get('new') === '1' || false)
   const [editing, setEditing] = useState<Customer | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -60,21 +64,27 @@ export function CustomersPage() {
   useEffect(() => {
     const timer = setTimeout(async () => {
       setLoading(true)
-      const res = await listCustomers({
-        search,
-        searchFields: customerSearchFields,
-        filters: { status: status || undefined, type: type || undefined },
-        sortBy: sortBy as keyof Customer,
-        sortDir,
-        page,
-        perPage,
-      })
-      setData(res.data)
-      setTotal(res.total)
-      setLoading(false)
+      setLoadError(false)
+      try {
+        const res = await listCustomers({
+          search,
+          searchFields: customerSearchFields,
+          filters: { status: status || undefined, type: type || undefined },
+          sortBy: sortBy as keyof Customer,
+          sortDir,
+          page,
+          perPage,
+        })
+        setData(res.data)
+        setTotal(res.total)
+      } catch {
+        setLoadError(true)
+      } finally {
+        setLoading(false)
+      }
     }, 250)
     return () => clearTimeout(timer)
-  }, [search, status, type, sortBy, sortDir, page, perPage])
+  }, [search, status, type, sortBy, sortDir, page, perPage, reloadKey])
 
   const totalPages = Math.max(1, Math.ceil(total / perPage))
 
@@ -130,6 +140,7 @@ export function CustomersPage() {
       }
       setModalOpen(false)
       setEditing(null)
+      setSearchParams({})
       const res = await listCustomers({
         search,
         searchFields: customerSearchFields,
@@ -181,6 +192,7 @@ export function CustomersPage() {
             </div>
           </div>
         ),
+        mobilePriority: 1,
       },
       {
         key: 'type',
@@ -197,6 +209,7 @@ export function CustomersPage() {
           const b = getStatusBadge(r.status)
           return <Badge variant={b.variant}>{b.label}</Badge>
         },
+        mobilePriority: 2,
       },
       {
         key: 'total_spent',
@@ -204,6 +217,7 @@ export function CustomersPage() {
         sortable: true,
         render: (r) => <span className="font-medium text-surface-900">{formatCurrency(r.total_spent)}</span>,
         hideOnMobile: true,
+        mobilePriority: 3,
       },
       {
         key: 'visit_count',
@@ -211,6 +225,7 @@ export function CustomersPage() {
         sortable: true,
         render: (r) => formatNumber(r.visit_count),
         hideOnMobile: true,
+        mobilePriority: 3,
       },
       {
         key: 'last_activity',
@@ -221,6 +236,22 @@ export function CustomersPage() {
       },
     ],
     []
+  )
+
+  const mobileCardRender = (c: Customer) => (
+    <div className="flex items-center gap-3">
+      <Avatar firstName={c.first_name} lastName={c.last_name} size="md" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-surface-900 truncate">{c.first_name} {c.last_name}</p>
+        <p className="text-xs text-surface-500 truncate">{c.email || c.phone || 'No contact'}</p>
+        <div className="flex items-center gap-2 mt-2">
+          <Badge variant={getStatusBadge(c.status).variant} className="text-[10px]">{getStatusBadge(c.status).label}</Badge>
+          <span className="text-[11px] text-surface-500">{formatCurrency(c.total_spent)}</span>
+          <span className="text-[11px] text-surface-500">{formatNumber(c.visit_count)} visits</span>
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-surface-400 shrink-0" />
+    </div>
   )
 
   return (
@@ -300,6 +331,17 @@ export function CustomersPage() {
             <Skeleton className="h-8 w-full mb-4" />
             <Skeleton className="h-8 w-full mb-4" />
           </div>
+        ) : loadError ? (
+          <EmptyState
+            icon={<AlertTriangle className="h-6 w-6" />}
+            title="Couldn't load customers"
+            description="We hit a problem loading your data. Check your connection and try again."
+            action={
+              <Button icon={<RotateCw className="h-4 w-4" />} onClick={() => setReloadKey((x) => x + 1)}>
+                Retry
+              </Button>
+            }
+          />
         ) : (
           <>
             <DataTable
@@ -310,6 +352,8 @@ export function CustomersPage() {
               onSort={handleSort}
               sortBy={sortBy}
               sortDir={sortDir}
+              mobileCardRender={mobileCardRender}
+              compact={getPreferences().compactLayout}
               emptyState={
                 <EmptyState
                   icon={<Users className="h-6 w-6" />}
@@ -343,10 +387,11 @@ export function CustomersPage() {
       <CustomerForm
         key={modalOpen ? `open-${editing?.id ?? 'new'}` : 'closed'}
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); setSearchParams({}) }}
         onSave={handleSave}
         initial={editing ?? undefined}
         loading={saving}
+        mobileBottomSheet
       />
     </div>
   )

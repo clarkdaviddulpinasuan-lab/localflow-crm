@@ -85,6 +85,25 @@ describe('booking service', () => {
     })
   }
 
+  it('stores a cleared end_date as null rather than an empty string', async () => {
+    const b = await createBooking({
+      customer_id: 'cust-001',
+      resource: 'Room 202',
+      date: '2099-01-01',
+      end_date: '2099-01-03',
+      start_time: '10:00',
+      end_time: '12:00',
+      guests: 2,
+      status: 'pending',
+      amount: 1500,
+      payment_status: 'pending',
+    })
+    // The form hands back '' for a cleared date input; Postgres rejects that
+    // for a date column, so it must be normalised to null on update.
+    const updated = await updateBooking(b.id, { end_date: '' })
+    expect(updated.end_date).toBeNull()
+  })
+
   it('creates and lists a booking', async () => {
     const b = await makeBooking()
     expect((await listBookings({ perPage: 100 })).total).toBeGreaterThan(0)

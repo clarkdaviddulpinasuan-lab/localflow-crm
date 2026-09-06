@@ -14,21 +14,24 @@ This folder contains everything needed to stand up the LocalFlow CRM backend on 
 | `migrations/008_create_templates_communications.sql` | Message templates + communications ledger + RLS |
 | `migrations/009_link_orders_to_bookings.sql` | `orders.booking_id` column + index |
 | `migrations/010_tenant_isolation.sql` | Each signup gets its own isolated business (multi-tenant) |
-| `apply_latest.sql` | Concatenation of migrations 007→010 — paste into the SQL editor if your project was set up before those shipped |
+| `migrations/016_create_avatars_bucket.sql` | Creates the public `avatars` storage bucket + policies for profile pictures |
+| `migrations/017_team_invites.sql` | Multi-member teams via invite token (multiple accounts share one business) |
+| `migrations/018_multi_business.sql` | Multi-business membership (switcher), admin-created accounts, self-serve leave |
+| `apply_latest.sql` | Concatenation of migrations 007→018 — paste into the SQL editor if your project was set up before those shipped |
 | `seed.sql` | Sample dataset — the "Siargao Breeze Resort" business, profiles, customers, bookings, orders, tasks, leads, activities, notifications |
 | `reset.sql` | Drops all objects and recreates them for a clean environment |
 
 ## Applying
 
 1. Open the **Supabase dashboard → SQL Editor**.
-2. Paste & run the migration files **in order** (`001` → `010`), or use the Supabase CLI: `supabase db push`.
+2. Paste & run the migration files **in order** (`001` → `018`), or use the Supabase CLI: `supabase db push`.
 3. (Optional) Run `seed.sql` for sample data — useful for development and demo previews. In production, skip it so each new account starts clean.
 
 The migrations are idempotent (safe to re-run) thanks to `create table if not exists`, guarded `do $$ ... exception when duplicate_object` blocks, and `create index if not exists`.
 
 ## Row Level Security
 
-RLS is enabled on every table. Rows are scoped to a business via the `current_business_id()` helper (derived from the authenticated user's profile), so clients can never read or write outside their own organization. See [DATABASE.md](../../DATABASE.md) for the policy breakdown.
+RLS is enabled on every table. Rows are scoped to a business via the `current_business_id()` helper (the user's `user_current_business` preference, falling back to their single membership — migration 018), so clients can never read or write outside their own organization. See [DATABASE.md](../../DATABASE.md) for the policy breakdown.
 
 The Supabase **anon key** is safe to expose in the frontend because every table is protected by RLS and the policies only grant access to the caller's own business.
 

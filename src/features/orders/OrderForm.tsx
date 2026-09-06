@@ -42,6 +42,7 @@ interface OrderFormProps {
   defaultCustomerId?: string
   bookings?: { value: string; label: string }[]
   defaultBookingId?: string
+  mobileBottomSheet?: boolean
 }
 
 export interface OrderFormData extends OrderFormValues {}
@@ -56,6 +57,7 @@ export function OrderForm({
   defaultCustomerId,
   bookings = [],
   defaultBookingId,
+  mobileBottomSheet,
 }: OrderFormProps) {
   const [values, setValues] = useState<OrderFormValues>({
     customer_id: defaultCustomerId ?? initial?.customer_id ?? '',
@@ -70,6 +72,7 @@ export function OrderForm({
     staff_member: initial?.staff_member ?? '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof OrderFormValues, string>>>({})
+  const [saveError, setSaveError] = useState('')
 
   const availableBookings = values.customer_id
     ? bookings.filter((b) => b.value.startsWith(values.customer_id + ':'))
@@ -99,7 +102,12 @@ export function OrderForm({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!validate()) return
-    await onSave(values)
+    setSaveError('')
+    try {
+      await onSave(values)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save. Please try again.')
+    }
   }
 
   return (
@@ -108,6 +116,7 @@ export function OrderForm({
       onClose={onClose}
       title={initial ? 'Edit order' : 'Create order'}
       description={initial ? `Order ${initial.order_number}` : `Number will be ${nextOrderNumber()}`}
+      mobileBottomSheet={mobileBottomSheet}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Select
@@ -216,6 +225,12 @@ export function OrderForm({
           placeholder="e.g. Marco"
           hint="Optional"
         />
+
+        {saveError && (
+          <p role="alert" className="rounded-[8px] bg-danger-50 px-3 py-2 text-sm text-danger-700">
+            {saveError}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>

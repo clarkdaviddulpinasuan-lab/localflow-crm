@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   formatCurrency,
   formatNumber,
@@ -6,7 +6,15 @@ import {
   getGreeting,
   calculatePercentageChange,
   classNames,
+  formatDate,
+  formatDateSpan,
+  parseISODate,
 } from '@/utils/format'
+import { savePreferences, defaultPreferences } from '@/services/settingsService'
+
+beforeEach(() => {
+  savePreferences(defaultPreferences())
+})
 
 describe('formatCurrency', () => {
   it('formats PHP with no decimals by default', () => {
@@ -65,5 +73,54 @@ describe('calculatePercentageChange', () => {
 describe('classNames', () => {
   it('joins truthy class names', () => {
     expect(classNames('a', '', 'b', null, undefined, false, 'c')).toBe('a b c')
+  })
+})
+
+describe('formatDate', () => {
+  it('defaults to MM/DD/YYYY', () => {
+    expect(formatDate('2025-06-10')).toBe('06/10/2025')
+  })
+
+  it('honors DD/MM/YYYY', () => {
+    savePreferences({ ...defaultPreferences(), dateFormat: 'DD/MM/YYYY' })
+    expect(formatDate('2025-06-10')).toBe('10/06/2025')
+  })
+
+  it('honors YYYY-MM-DD', () => {
+    savePreferences({ ...defaultPreferences(), dateFormat: 'YYYY-MM-DD' })
+    expect(formatDate('2025-06-10')).toBe('2025-06-10')
+  })
+
+  it('accepts Date objects', () => {
+    expect(formatDate(new Date(2025, 5, 10))).toBe('06/10/2025')
+  })
+
+  it('falls back to locale options when opts provided', () => {
+    expect(formatDate('2025-06-10', { month: 'long' })).toBe('June')
+  })
+})
+
+describe('formatDateSpan', () => {
+  it('renders a single date', () => {
+    expect(formatDateSpan('2025-06-10')).toBe('06/10/2025')
+  })
+
+  it('renders a multi-day span with range formatting', () => {
+    const span = formatDateSpan('2025-06-10', '2025-06-12')
+    expect(span).toContain('Jun 10')
+    expect(span).toContain('12')
+  })
+
+  it('returns an em dash for empty input', () => {
+    expect(formatDateSpan('')).toBe('—')
+  })
+})
+
+describe('parseISODate', () => {
+  it('parses YYYY-MM-DD as a local date', () => {
+    const d = parseISODate('2025-06-10')
+    expect(d.getFullYear()).toBe(2025)
+    expect(d.getMonth()).toBe(5)
+    expect(d.getDate()).toBe(10)
   })
 })

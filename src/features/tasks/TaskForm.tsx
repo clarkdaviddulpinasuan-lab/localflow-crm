@@ -35,6 +35,7 @@ interface TaskFormProps {
   loading?: boolean
   customerOptions: { value: string; label: string }[]
   defaultCustomerId?: string
+  mobileBottomSheet?: boolean
 }
 
 export interface TaskFormData extends TaskFormValues {}
@@ -47,6 +48,7 @@ export function TaskForm({
   loading,
   customerOptions,
   defaultCustomerId,
+  mobileBottomSheet,
 }: TaskFormProps) {
   const [values, setValues] = useState<TaskFormValues>({
     title: initial?.title ?? '',
@@ -83,6 +85,7 @@ export function TaskForm({
       onClose={onClose}
       title={initial ? 'Edit task' : 'Create task'}
       description="Track a follow-up, reminder, or to-do item."
+      mobileBottomSheet={mobileBottomSheet}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input

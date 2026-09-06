@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { Skeleton } from '@/components/ui/Skeleton'
 
@@ -48,7 +48,6 @@ const TeamPage = namedPage(() => import('@/pages/TeamPage'), 'TeamPage')
 const ProfilePage = namedPage(() => import('@/pages/ProfilePage'), 'ProfilePage')
 const ActivityPage = namedPage(() => import('@/pages/ActivityPage'), 'ActivityPage')
 const NotificationsPage = namedPage(() => import('@/pages/NotificationsPage'), 'NotificationsPage')
-const BusinessProfilePage = namedPage(() => import('@/pages/BusinessProfilePage'), 'BusinessProfilePage')
 const SettingsPage = namedPage(() => import('@/pages/SettingsPage'), 'SettingsPage')
 const ResourcesPage = namedPage(() => import('@/pages/ResourcesPage'), 'ResourcesPage')
 const LoginPage = namedPage(() => import('@/pages/LoginPage'), 'LoginPage')
@@ -88,7 +87,7 @@ export function AppRoutes() {
       <Route path="/profile" element={routeElement(<ProfilePage />)} />
       <Route path="/activity" element={routeElement(<ActivityPage />)} />
       <Route path="/notifications" element={routeElement(<NotificationsPage />)} />
-      <Route path="/business" element={routeElement(<BusinessProfilePage />)} />
+      <Route path="/business" element={<Navigate to="/profile" replace />} />
       <Route path="/settings" element={routeElement(<SettingsPage />)} />
       <Route path="/resources" element={routeElement(<ResourcesPage />)} />
 

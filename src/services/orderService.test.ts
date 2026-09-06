@@ -88,4 +88,23 @@ describe('order service', () => {
     const res = await listOrders({ filters: { customer_id: customers[0].id }, perPage: 100 })
     expect(res.data.some((o) => o.id === created.id)).toBe(false)
   })
+
+  it('stores cleared dates as null rather than empty strings', async () => {
+    const customers = getTable('customers')
+    const created = await createOrder({
+      customer_id: customers[0].id as string,
+      items: 'Blank date test',
+      total: 100,
+      payment_status: 'pending',
+      status: 'new',
+      staff_member: '',
+      start_date: '2026-01-05',
+      end_date: '2026-01-07',
+    })
+    // The form hands back '' for a cleared date input; Postgres rejects that
+    // for a date column, so it must be normalised to null on update.
+    const updated = await updateOrder(created.id, { start_date: '', end_date: '' })
+    expect(updated.start_date).toBeNull()
+    expect(updated.end_date).toBeNull()
+  })
 })

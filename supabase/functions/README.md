@@ -3,6 +3,8 @@
 `send-message` handles queued `communications` rows: it sends the message
 through the configured provider and records `delivered` / `failed` on the row.
 `send-test-email` powers "Test send" in Templates (no persistence).
+`send-invite` emails a pending team-invitation link (Team page → Invite Member,
+and the Resend action).
 
 ## How delivery works
 
@@ -14,6 +16,18 @@ through the configured provider and records `delivered` / `failed` on the row.
 3. The function loads the sender identity from `settings` (`message_from`),
    calls the provider, and updates the row: `provider`, `provider_message_id`,
    `delivered_at`, or `status = 'failed'` + `error`.
+
+## Team invitations
+
+`sendInviteEmail()` (client, `settingsService.ts`) invokes `send-invite` after
+creating an invite (and on Resend), passing `invite_id` plus the full
+`/signup?invite=<token>` link built from the client's own origin. The caller's
+JWT is forwarded, so RLS decides whether this caller may even read the invite —
+a caller outside the business gets zero rows (404). The function resolves the
+business + inviter names, loads the sender identity, and emails the invitee or
+falls back to a logged dry-run when `RESEND_API_KEY` is absent. A failed send
+is reported back (non-`ok`), and the Team page falls back to its Copy-link
+affordance instead of blocking invite creation.
 
 ## Providers
 
@@ -45,3 +59,4 @@ with "SMS sending is not configured yet."
 Deploying the functions to your hosted project is done later via
 `supabase functions deploy` (with `supabase secrets set RESEND_API_KEY=…`
 first) — out of scope while the app itself is not yet on the internet.
+Deploy the new function with: `supabase functions deploy send-invite`.

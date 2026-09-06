@@ -5,7 +5,7 @@ LocalFlow CRM builds to a **static site** (`dist/`) and is deployed to **Vercel*
 ## 1. Supabase setup
 
 1. Create a project at [app.supabase.com](https://app.supabase.com).
-2. Open **SQL Editor** and run the migrations in order (`supabase/migrations/001_init.sql` → `010_tenant_isolation.sql`), or use the Supabase CLI: `supabase db push`.
+2. Open **SQL Editor** and run the migrations in order (`supabase/migrations/001_init.sql` → `018_multi_business.sql`), or use the Supabase CLI: `supabase db push`.
    - `001` schema, enums, indexes, triggers, RLS
    - `002` backfill profiles for existing auth users
    - `003` backfill visit counts
@@ -15,10 +15,26 @@ LocalFlow CRM builds to a **static site** (`dist/`) and is deployed to **Vercel*
    - `008` message templates + communications tables
    - `009` link orders → bookings
    - `010` **each signup gets their own isolated business** (true multi-tenancy)
+   - `011`–`016` message delivery state, resources, booking items, check-in/out, multi-day dates, avatars bucket
+   - `017` **team invitations** (multi-member businesses)
+   - `018` **multi-business membership** (business switcher, admin-created accounts, self-serve leave)
 3. In **Project Settings → API**, copy the **Project URL** and **anon public key**.
 4. Enable **Email** provider under Authentication → Providers (email/password sign-in).
 
-Then set up the app and deploy. If your Supabase project predates migrations 007–010, paste `supabase/apply_latest.sql` into the SQL editor to bring it up to date (safe to re-run).
+Then set up the app and deploy. If your Supabase project predates migrations 007–018, paste `supabase/apply_latest.sql` into the SQL editor to bring it up to date (safe to re-run).
+
+### Edge Functions (optional — for email delivery)
+
+Send-based features degrade to **dry-run** (logged, no external call) without these.
+Deploy with the Supabase CLI, then set the shared secret:
+
+```bash
+supabase functions deploy send-message send-test-email send-invite
+supabase secrets set RESEND_API_KEY=re_xxx
+```
+
+`send-invite` powers the Team page's automatic invite emails + Resend; `send-message`
+handles queued customer messages; `send-test-email` powers "Test send" in Templates.
 
 ## 2. Configure the app
 
@@ -81,6 +97,8 @@ Deploys from `main` automatically.
 - The home/auth routes load (SPA fallback works on deep links like `/customers`).
 - Sign up a fresh account → it should be a brand-new, empty business (migration 010).
 - Confirm data is isolated — a user from one business must never see another business’s rows (enforced by RLS).
+- Team: an owner invites `teammate@example.com` → the invite email arrives (or logs a dry-run) → the invitee signs up via the link → both reach the same business dashboard.
+- Multi-business: an existing account that joins a second business via an invite sees the business **switcher** in the sidebar; switching re-scopes the whole dashboard. Admin-created accounts sign in immediately; self-serve **Leave** works for non-owners (and owners once another owner exists).
 - On a phone, open the deployed site → Add to Home Screen (PWA).
 
 ## Other hosts

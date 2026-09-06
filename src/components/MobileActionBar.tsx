@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { UserPlus, CalendarPlus, ShoppingCart, ClipboardList, StickyNote, CreditCard, Flag } from 'lucide-react'
+import { UserPlus, CalendarPlus, ShoppingCart, ClipboardList, StickyNote, CreditCard, Flag, MoreHorizontal } from 'lucide-react'
 import type { QuickActionConfig } from '@/config/businessTypes'
 import { useBusiness } from '@/contexts/BusinessContext'
 
@@ -17,7 +17,8 @@ const iconMap = {
 // create records quickly from anywhere in the app.
 export function MobileActionBar() {
   const { config } = useBusiness()
-  const actions = config.quickActions.slice(0, 5)
+  const actions = config.quickActions.slice(0, 4)
+  const remainingCount = Math.max(0, config.quickActions.length - 4)
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-40 border-t border-surface-200 bg-white/95 backdrop-blur lg:hidden safe-area-bottom">
@@ -32,7 +33,7 @@ export function MobileActionBar() {
             </>
           )
           const cls =
-            'flex flex-1 flex-col items-center gap-0.5 py-2.5 text-surface-600 active:bg-surface-100 transition-colors'
+            'flex flex-1 flex-col items-center gap-0.5 py-3 text-surface-600 active:bg-surface-100 transition-colors min-h-[56px]'
           return isRoute ? (
             <Link key={action.id} to={action.target} className={cls}>
               {inner}
@@ -43,6 +44,14 @@ export function MobileActionBar() {
             </button>
           )
         })}
+        {remainingCount > 0 && (
+          <button
+            className="flex flex-1 flex-col items-center gap-0.5 py-3 text-surface-600 active:bg-surface-100 transition-colors min-h-[56px]"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+            <span className="text-[10px] leading-tight">+{remainingCount}</span>
+          </button>
+        )}
       </nav>
     </div>
   )

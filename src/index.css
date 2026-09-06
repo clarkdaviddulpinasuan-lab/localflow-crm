@@ -13,16 +13,16 @@
   --color-navy-900: #0f1724;
   --color-navy-950: #080c14;
 
-  --color-primary-50: #eff4ff;
-  --color-primary-100: #dbe6fe;
-  --color-primary-200: #bfd3fe;
-  --color-primary-300: #93b4fd;
-  --color-primary-400: #6090fa;
-  --color-primary-500: #3b6cf6;
-  --color-primary-600: #254deb;
-  --color-primary-700: #1d3ad8;
-  --color-primary-800: #1e30af;
-  --color-primary-900: #1e2e8a;
+  --color-primary-50: #f6f5fe;
+  --color-primary-100: #ebe9fd;
+  --color-primary-200: #d7d3fb;
+  --color-primary-300: #bdb5f9;
+  --color-primary-400: #9c90f5;
+  --color-primary-500: #7b6bf2;
+  --color-primary-600: #6c5ed5;
+  --color-primary-700: #5d51b8;
+  --color-primary-800: #4f449b;
+  --color-primary-900: #40387e;
 
   --color-success-50: #f0fdf4;
   --color-success-100: #dcfce7;
@@ -71,6 +71,16 @@
   --color-surface-800: #1f2937;
   --color-surface-900: #111827;
 
+  --color-rhombus-bg: #2d2b3e;
+  --color-accent-50: #f5f5f7;
+  --color-accent-100: #ede9fe;
+  --color-accent-200: #fce7f3;
+  --color-accent-300: #ccfbf1;
+  --color-accent-400: #fef9c3;
+
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-soft-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --font-alata: 'Alata', sans-serif;
@@ -89,6 +99,22 @@
     color: var(--color-surface-900);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Replace the browser's default black focus outline (notably on
+     Recharts' focusable SVG surfaces) with a branded focus ring. */
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary-400);
+    outline-offset: 2px;
+  }
+
+  .recharts-surface,
+  .recharts-wrapper {
+    outline: none !important;
   }
 
   @media (prefers-reduced-motion: reduce) {

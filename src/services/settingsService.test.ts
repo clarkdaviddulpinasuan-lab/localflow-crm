@@ -1,14 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { resetSupabaseMock, getTable } from '@/test/supabaseMock'
+import { resetSupabaseMock, getTable, setFunctionsInvoke, setCurrentUser, seededBusiness } from '@/test/supabaseMock'
 import {
   getBusiness,
   updateBusiness,
   updateProfile,
   getProfile,
   listTeam,
-  addTeamMember,
+  createInvite,
+  listPendingInvites,
+  revokeInvite,
+  sendInviteEmail,
   updateTeamMember,
   removeTeamMember,
+  switchBusiness,
+  acceptInvite,
+  createMemberAccount,
+  leaveBusiness,
   getPreferences,
   defaultPreferences,
   savePreferences,
@@ -46,9 +53,38 @@ describe('settings service', () => {
     expect((await listTeam()).length).toBeGreaterThan(1)
   })
 
-  it('adds a team member', async () => {
-    await addTeamMember({ first_name: 'New', last_name: 'Member', email: 'new@test.com', role: 'staff' })
-    expect((await listTeam()).some((t) => t.email === 'new@test.com')).toBe(true)
+  it('creates, lists, and revokes an invitation', async () => {
+    const invite = await createInvite({ email: 'peer@test.com', role: 'manager' })
+    expect(invite.email).toBe('peer@test.com')
+    expect(invite.role).toBe('manager')
+    expect(invite.status).toBe('pending')
+    expect(invite.token).toBeTruthy()
+
+    const pending = await listPendingInvites()
+    expect(pending.some((i) => i.email === 'peer@test.com')).toBe(true)
+
+    await revokeInvite(invite.id)
+    expect((await listPendingInvites()).some((i) => i.email === 'peer@test.com')).toBe(false)
+  })
+
+  it('emails an invite link through the send-invite edge function', async () => {
+    const invite = await createInvite({ email: 'peer@test.com', role: 'manager' })
+    const seen = vi.fn()
+    setFunctionsInvoke(async (fn, opts) => {
+      seen(fn, opts)
+      return { data: { ok: true, provider: 'dryrun' }, error: null }
+    })
+    expect(await sendInviteEmail(invite)).toBe(true)
+    const [fn, opts] = seen.mock.calls[0]
+    expect(fn).toBe('send-invite')
+    expect((opts?.body as { invite_id: string }).invite_id).toBe(invite.id)
+    expect((opts?.body as { link: string }).link).toContain(`/signup?invite=${invite.token}`)
+  })
+
+  it('reports a failed invite email (function error or provider rejection)', async () => {
+    const invite = await createInvite({ email: 'peer@test.com', role: 'manager' })
+    setFunctionsInvoke(async () => ({ data: { ok: false, error: 'Provider rejected the send.' }, error: null }))
+    expect(await sendInviteEmail(invite)).toBe(false)
   })
 
   it('updates a team member role', async () => {
@@ -96,5 +132,97 @@ describe('settings service', () => {
     expect(restored?.widgets).toEqual({ insights: false, charts: false })
     expect(restored?.kpiCards[0].label).toBe('Revenue')
     expect(getTable('settings').length).toBe(1)
+  })
+
+  it('rejects switching to a business the user does not belong to', async () => {
+    await expect(switchBusiness('biz-nope')).rejects.toThrow('not a member of that business')
+    expect((await getProfile()).business_id).toBe(seededBusiness.id)
+  })
+
+  it('joins a second business via accept_invite and switches back and forth', async () => {
+    getTable('businesses').push({
+      id: 'biz-999', name: 'Island Foods Coop', type: 'other',
+      created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+    })
+    getTable('invitations').push({
+      id: 'invite-999', business_id: 'biz-999', email: 'ana@siargaobreeze.com', role: 'staff',
+      invited_by: 'user-002', status: 'pending', token: 'tok-999',
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    })
+
+    await acceptInvite('tok-999')
+
+    // The joined business becomes the active one.
+    expect(getTable('user_current_business').find((r) => r.user_id === 'user-001')?.business_id).toBe('biz-999')
+    const joined = await getProfile()
+    expect(joined.business_id).toBe('biz-999')
+    expect(joined.role).toBe('staff')
+
+    await switchBusiness('biz-001')
+    const primary = await getProfile()
+    expect(primary.business_id).toBe('biz-001')
+    expect(primary.role).toBe('owner')
+
+    // Team listings stay scoped to the active business.
+    const team = await listTeam()
+    expect(team.every((m) => m.business_id === 'biz-001')).toBe(true)
+  })
+
+  it('creates an admin account that joins the active business only', async () => {
+    const beforeBusinesses = getTable('businesses').length
+    await createMemberAccount({ first_name: 'Nita', last_name: 'New', email: 'nita@test.com', password: 'password123', role: 'staff' })
+
+    const created = getTable('auth_users').find((r) => (r.email as string) === 'nita@test.com')
+    expect(created).toBeTruthy()
+    expect((created as { raw_user_meta_data?: Record<string, unknown> }).raw_user_meta_data).toMatchObject({ admin_created: true })
+
+    const userId = (created as { id: string }).id
+    const createdProfile = getTable('profiles').find((p) => p.user_id === userId)
+    expect(createdProfile?.business_id).toBe(seededBusiness.id)
+    expect(createdProfile?.role).toBe('staff')
+    expect(getTable('user_current_business').find((r) => r.user_id === userId)?.business_id).toBe(seededBusiness.id)
+    expect(getTable('businesses').length).toBe(beforeBusinesses)
+  })
+
+  it('blocks a manager from creating an owner account', async () => {
+    setCurrentUser({ id: 'user-002', email: 'marco@siargaobreeze.com' })
+    await expect(
+      createMemberAccount({ first_name: 'Boss', last_name: 'Maker', email: 'boss@test.com', password: 'password123', role: 'owner' })
+    ).rejects.toThrow('do not have permission')
+  })
+
+  it('leaves the active business and moves the preference to a remaining membership', async () => {
+    getTable('businesses').push({
+      id: 'biz-999', name: 'Island Foods Coop', type: 'other',
+      created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+    })
+    getTable('profiles').push({
+      id: 'profile-999', user_id: 'user-001', business_id: 'biz-999',
+      first_name: 'Ana', last_name: 'Reyes', email: 'ana@siargaobreeze.com', role: 'staff',
+      created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z',
+    })
+    getTable('user_current_business').find((r) => r.user_id === 'user-001')!.business_id = 'biz-999'
+
+    await leaveBusiness()
+    const prefs = getTable('user_current_business').find((r) => r.user_id === 'user-001')
+    expect(prefs?.business_id).toBe('biz-001')
+    expect(getTable('profiles').filter((p) => p.user_id === 'user-001' && p.business_id === 'biz-999')).toHaveLength(0)
+    expect(getTable('profiles').filter((p) => p.user_id === 'user-001' && p.business_id === 'biz-001').length).toBeGreaterThan(0)
+
+    await leaveBusiness()
+    expect(getTable('profiles').filter((p) => p.user_id === 'user-001')).toHaveLength(0)
+    expect(getTable('user_current_business').filter((r) => r.user_id === 'user-001')).toHaveLength(0)
+  })
+
+  it('rejects an invite already consumed or for a member of the target business', async () => {
+    getTable('invitations').push({
+      id: 'invite-existing', business_id: 'biz-001', email: 'ana@siargaobreeze.com', role: 'manager',
+      invited_by: 'user-002', status: 'pending', token: 'tok-existing',
+      expires_at: new Date(Date.now() + 86400000).toISOString(),
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    })
+    await expect(acceptInvite('tok-existing')).rejects.toThrow('already a member')
+    await expect(acceptInvite('tok-gone')).rejects.toThrow('invalid, expired, or already used')
   })
 })

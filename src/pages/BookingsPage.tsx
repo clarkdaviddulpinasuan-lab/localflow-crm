@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, CalendarCheck, Send, LogIn, LogOut } from 'lucide-react'
+import { Plus, CalendarCheck, Send, LogIn, LogOut, ChevronRight } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -27,7 +27,7 @@ import {
 import { listCustomers, getCustomer } from '@/services/customerService'
 import { listOrders } from '@/services/orderService'
 import { sendCommunication } from '@/services/communicationService'
-import { getBusiness } from '@/services/settingsService'
+import { getBusiness, getPreferences } from '@/services/settingsService'
 import { renderTemplate, bookingTemplateValues } from '@/services/templateService'
 import type { Booking, Order } from '@/types'
 import { useBusiness } from '@/contexts/BusinessContext'
@@ -96,6 +96,20 @@ export function BookingsPage() {
   }, [status])
 
   const defaultCustomerId = searchParams.get('customer') ?? undefined
+
+  useEffect(() => {
+    const viewId = searchParams.get('view')
+    if (!viewId) return
+    listBookings({ perPage: 9999 }).then((res) => {
+      const target = res.data.find((b) => b.id === viewId)
+      if (target) {
+        setDetailBooking(target)
+        setDetailOpen(true)
+      }
+    })
+    // Run once on mount; the page is entered fresh from the calendar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -207,11 +221,19 @@ export function BookingsPage() {
     setDetailOpen(true)
   }
 
+  function clearViewParam() {
+    if (!searchParams.get('view')) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('view')
+    setSearchParams(next, { replace: true })
+  }
+
   async function handleCancel() {
     if (!detailBooking) return
     await cancelBooking(detailBooking.id)
     setDetailOpen(false)
     setCancelOpen(false)
+    clearViewParam()
     await loadData()
   }
 
@@ -220,6 +242,7 @@ export function BookingsPage() {
     await deleteBooking(detailBooking.id)
     setDetailOpen(false)
     setCancelOpen(false)
+    clearViewParam()
     await loadData()
   }
 
@@ -253,6 +276,7 @@ export function BookingsPage() {
         sortable: true,
         sortValue: (r) => customerName(r.customer_id),
         render: (r) => <span className="font-medium text-surface-900">{customerName(r.customer_id)}</span>,
+        mobilePriority: 1,
       },
       {
         key: 'resource',
@@ -267,6 +291,7 @@ export function BookingsPage() {
         sortable: true,
         sortValue: (r) => r.date,
         render: (r) => <span>{formatDateSpan(r.date, r.end_date)}</span>,
+        mobilePriority: 2,
       },
       {
         key: 'status',
@@ -276,6 +301,7 @@ export function BookingsPage() {
           const b = getStatusBadge(r.status)
           return <Badge variant={b.variant}>{b.label}</Badge>
         },
+        mobilePriority: 1,
       },
       {
         key: 'amount',
@@ -283,6 +309,7 @@ export function BookingsPage() {
         sortable: true,
         render: (r) => <span className="font-medium text-surface-900">{formatCurrency(r.amount)}</span>,
         hideOnMobile: true,
+        mobilePriority: 3,
       },
       {
         key: 'payment_status',
@@ -290,9 +317,26 @@ export function BookingsPage() {
         sortable: true,
         render: (r) => <Badge variant={getStatusBadge(r.payment_status).variant}>{getStatusBadge(r.payment_status).label}</Badge>,
         hideOnMobile: true,
+        mobilePriority: 3,
       },
     ],
     [customerName, terminology.resourceLabel]
+  )
+
+  const mobileCardRender = (b: Booking) => (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-surface-900 truncate">{customerName(b.customer_id)}</p>
+        <p className="text-xs text-surface-500 truncate">{b.resource}</p>
+        <div className="flex items-center gap-2 mt-2">
+          <Badge variant={getStatusBadge(b.status).variant} className="text-[10px]">{getStatusBadge(b.status).label}</Badge>
+          <Badge variant={getStatusBadge(b.payment_status).variant} className="text-[10px]">{getStatusBadge(b.payment_status).label}</Badge>
+          <span className="text-[11px] text-surface-500">{formatDateSpan(b.date, b.end_date)}</span>
+          <span className="font-medium text-surface-900">{formatCurrency(b.amount)}</span>
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-surface-400 shrink-0" />
+    </div>
   )
 
   return (
@@ -362,6 +406,8 @@ export function BookingsPage() {
               onSort={handleSort}
               sortBy={sortBy}
               sortDir={sortDir}
+              mobileCardRender={mobileCardRender}
+              compact={getPreferences().compactLayout}
               emptyState={
                 <EmptyState
                   icon={<CalendarCheck className="h-6 w-6" />}
@@ -389,6 +435,7 @@ export function BookingsPage() {
         loading={saving}
         customerOptions={customers}
         defaultCustomerId={editing ? undefined : defaultCustomerId}
+        mobileBottomSheet
       />
 
       <Modal
@@ -396,6 +443,7 @@ export function BookingsPage() {
         onClose={() => {
           setDetailOpen(false)
           setDetailBooking(null)
+          clearViewParam()
         }}
         title="Booking details"
         size="sm"

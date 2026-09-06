@@ -4,8 +4,8 @@ import type { Insight } from '@/services/insightService'
 
 const sevStyle = {
   positive: { icon: TrendingUp, chip: 'text-emerald-600 bg-emerald-50' },
-  caution: { icon: AlertTriangle, chip: 'text-amber-600 bg-amber-50' },
-  info: { icon: Info, chip: 'text-blue-600 bg-blue-50' },
+  caution: { icon: AlertTriangle, chip: 'text-amber-600 bg-amber-100' },
+  info: { icon: Info, chip: 'text-blue-600 bg-blue-100' },
 } as const
 
 interface InsightsPanelProps {
@@ -50,13 +50,13 @@ export function InsightsPanel({ items, loading }: InsightsPanelProps) {
                 {insight.link ? (
                   <Link
                     to={insight.link}
-                    className="group flex items-center gap-1 rounded-lg border border-surface-100 bg-surface-50/60 p-3 transition-colors hover:border-surface-200 hover:bg-white"
+                    className="group flex items-center gap-1 rounded-[12px] bg-white p-3 shadow-soft transition-shadow hover:shadow-soft-md"
                   >
                     {body}
-                    <ChevronRight className="h-4 w-4 shrink-0 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:text-surface-500" />
+                    <ChevronRight className="h-4 w-4 shrink-0 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#7b6bf2]" />
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-1 rounded-lg border border-surface-100 bg-surface-50/60 p-3">{body}</div>
+                  <div className="flex items-center gap-1 rounded-[12px] bg-white p-3 shadow-soft">{body}</div>
                 )}
               </li>
             )

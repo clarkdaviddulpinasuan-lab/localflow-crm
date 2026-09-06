@@ -1,5 +1,6 @@
 import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import { recalcCustomerStats } from '@/services/customerService'
 import { logActivity } from '@/services/activityService'
 import type { Booking, PaginatedResponse } from '@/types'
@@ -42,7 +43,7 @@ async function listFromSupabase(params: QueryParams<Booking> = {}): Promise<Pagi
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load bookings'))
   return paginate((data as Booking[]) ?? [], count ?? 0, page, perPage)
 }
@@ -52,7 +53,7 @@ export async function listBookings(params: QueryParams<Booking> = {}): Promise<P
 }
 
 export async function getBooking(id: string): Promise<Booking | undefined> {
-  const { data, error } = await supabase.from('bookings').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withRetry(() => supabase.from('bookings').select('*').eq('id', id).maybeSingle())
   if (error) throw new Error(messageFromError(error, 'Failed to load booking'))
   return (data as Booking) ?? undefined
 }
@@ -91,9 +92,14 @@ export async function createBooking(
 }
 
 export async function updateBooking(id: string, input: Partial<Booking>): Promise<Booking> {
+  // A cleared date input arrives as '', which Postgres rejects for a date
+  // column. Match createBooking and store the absence as NULL.
+  const payload: Partial<Booking> = { ...input }
+  if ('end_date' in payload) payload.end_date = payload.end_date || null
+
   const { data, error } = await supabase
     .from('bookings')
-    .update(input)
+    .update(payload)
     .eq('id', id)
     .select()
     .maybeSingle()

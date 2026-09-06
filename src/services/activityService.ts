@@ -1,6 +1,7 @@
 import { messageFromError } from '@/lib/dataClient'
 import { getProfile } from '@/services/settingsService'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { Activity } from '@/types'
 
 export type LogActivityInput = {
@@ -29,23 +30,27 @@ export async function logActivity(input: LogActivityInput): Promise<void> {
 }
 
 export async function listActivities(limit = 20): Promise<Activity[]> {
-  const { data, error } = await supabase
-    .from('activities')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('activities')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load activities'))
   return (data as Activity[]) ?? []
 }
 
 export async function getCustomerActivities(customerId: string, limit = 20): Promise<Activity[]> {
-  const { data, error } = await supabase
-    .from('activities')
-    .select('*')
-    .eq('entity_id', customerId)
-    .neq('entity_type', 'customer_note')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('activities')
+      .select('*')
+      .eq('entity_id', customerId)
+      .neq('entity_type', 'customer_note')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load activities'))
   return (data as Activity[]) ?? []
 }

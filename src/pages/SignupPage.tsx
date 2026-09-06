@@ -1,18 +1,66 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import { acceptInvite, INVITE_STORAGE_KEY } from '@/services/settingsService'
+
+interface InviteSummary {
+  business_name: string
+  invited_by: string
+}
 
 export function SignupPage() {
   const navigate = useNavigate()
+  const { user, loading: authLoading } = useAuth()
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'))
+  const [inviteSummary, setInviteSummary] = useState<InviteSummary | null>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const acceptedRef = useRef(false)
+
+  useEffect(() => {
+    if (inviteToken) {
+      sessionStorage.setItem(INVITE_STORAGE_KEY, inviteToken)
+    } else {
+      sessionStorage.removeItem(INVITE_STORAGE_KEY)
+    }
+  }, [inviteToken])
+
+  useEffect(() => {
+    if (!inviteToken) return
+    let cancelled = false
+    void Promise.resolve(supabase.rpc('get_invite_summary', { p_token: inviteToken }))
+      .then(({ data }) => {
+        if (!cancelled && data && (data as InviteSummary | null)?.business_name) {
+          setInviteSummary(data as InviteSummary)
+        }
+      })
+      .catch(() => {
+        // Summary is best-effort; the token is validated server-side at signup.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [inviteToken])
+
+  // Already signed in? Accept the pending invitation with the current account.
+  useEffect(() => {
+    if (!inviteToken || !user || authLoading || acceptedRef.current) return
+    acceptedRef.current = true
+    sessionStorage.removeItem(INVITE_STORAGE_KEY)
+    void acceptInvite(inviteToken)
+      .catch((err) => {
+        console.error('Failed to accept invitation for signed-in user:', err)
+      })
+      .finally(() => navigate('/', { replace: true }))
+  }, [inviteToken, user, authLoading, acceptedRef, navigate])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -37,7 +85,11 @@ export function SignupPage() {
         email,
         password,
         options: {
-          data: { first_name, last_name },
+          data: {
+            first_name,
+            last_name,
+            ...(inviteToken ? { invite_token: inviteToken } : {}),
+          },
           emailRedirectTo: window.location.origin,
         },
       })
@@ -64,8 +116,14 @@ export function SignupPage() {
           <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-600 mb-4">
             <Waves className="h-7 w-7 text-white" />
           </span>
-          <h1 className="text-2xl font-semibold tracking-tight text-surface-900">Create your account</h1>
-          <p className="text-sm text-surface-500 mt-1">Start managing your business with LocalFlow</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-surface-900">
+            {inviteSummary ? `Join ${inviteSummary.business_name}` : 'Create your account'}
+          </h1>
+          <p className="text-sm text-surface-500 mt-1">
+            {inviteSummary
+              ? `${inviteSummary.invited_by} invited you to work together.`
+              : 'Start managing your business with LocalFlow'}
+          </p>
         </div>
 
         <form
@@ -123,7 +181,10 @@ export function SignupPage() {
 
         <p className="text-center text-sm text-surface-500 mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-700">
+          <Link
+            to={`/login${inviteToken ? `?invite=${inviteToken}` : ''}`}
+            className="font-medium text-primary-600 hover:text-primary-700"
+          >
             Sign in
           </Link>
         </p>

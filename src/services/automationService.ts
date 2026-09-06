@@ -9,6 +9,7 @@ import { createFollowUp } from '@/services/followUpService'
 import { notify } from '@/services/notificationService'
 import { sendCommunication } from '@/services/communicationService'
 import { getProfile } from '@/services/settingsService'
+import { withRetry } from '@/lib/withRetry'
 import type { AutomationRule, AutomationEvent, AutomationTriggerType, AutomationActionType } from '@/types'
 
 export const TRIGGER_LABELS: Record<AutomationTriggerType, string> = {
@@ -77,12 +78,14 @@ function todayISO(): string {
 
 export async function getRules(): Promise<AutomationRule[]> {
   const businessId = await getCurrentBusinessId()
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('business_id', businessId)
-    .eq('key', RULES_KEY)
-    .maybeSingle()
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('settings')
+      .select('value')
+      .eq('business_id', businessId)
+      .eq('key', RULES_KEY)
+      .maybeSingle()
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load automation rules.'))
   if (!data?.value) return DEFAULT_RULES
   try {
@@ -212,7 +215,7 @@ async function collectEvents(rule: AutomationRule, customers: { id: string; firs
 }
 
 async function alreadyApplied(nonce: string): Promise<boolean> {
-  const { data, error } = await supabase.from('activities').select('id').eq('metadata.nonce', nonce).limit(1)
+  const { data, error } = await withRetry(() => supabase.from('activities').select('id').eq('metadata.nonce', nonce).limit(1))
   if (error) throw new Error(messageFromError(error, 'Failed to check automation history.'))
   return (data ?? []).length > 0
 }

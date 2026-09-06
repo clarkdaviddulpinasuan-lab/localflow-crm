@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Input } from '@/components/ui/Field'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { formatDateSpan } from '@/utils/format'
+import { getPreferences } from '@/services/settingsService'
 import {
   listResources,
   createResource,
@@ -343,6 +344,7 @@ async function handleSave(values: ResourceFormValues) {
               onSort={handleSort}
               sortBy={sortBy}
               sortDir={sortDir}
+              compact={getPreferences().compactLayout}
               emptyState={
                 <EmptyState
                   icon={<Layers className="h-6 w-6" />}

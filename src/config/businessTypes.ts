@@ -1,26 +1,26 @@
 import type { BusinessType, BookingStatus, OrderStatus, PaymentStatus } from '@/types'
 
 // ============================================================
-// CENTRALIZED BUSINESS-TYPE CONFIGURATION
+// DASHBOARD CONFIGURATION
 // ============================================================
-// This is the single source of truth for how the UI adapts to
-// different business types. Everything presentational (labels,
-// KPIs, widgets, quick actions, navigation) is driven from here.
+// One product, one dashboard. Wording, KPIs, quick actions and
+// sidebar labels are the SAME for every business type — see
+// UNIFORM_CONFIG below. The business type is still stored (and
+// shown in Profile) but only selects a display name.
 //
-// Configuration can be overridden per-business at runtime via
-// the `dashboard_config` key in the settings table (see
-// settingsService.getDashboardConfig). The TypeScript defaults
-// below act as the fallback schema + source of truth.
+// A per-workspace `dashboard_config` row in the settings table
+// can still hide/show dashboard sections (widgets); nothing else
+// in it is read back any more.
 // ============================================================
 
 /** A single KPI card definition shown on the dashboard. */
 export interface KpiCardConfig {
   id: string
   label: string
-  icon: 'revenue' | 'customers' | 'bookings' | 'tasks' | 'repeat' | 'credit' | 'occupancy' | 'aov'
+  icon: 'revenue' | 'customers' | 'bookings' | 'orders' | 'tasks' | 'repeat' | 'credit' | 'occupancy' | 'aov'
   positiveIsGood: boolean
   /** How the value is derived. */
-  metric: 'revenue' | 'customers' | 'active_bookings' | 'open_tasks' | 'repeat_customers'
+  metric: 'revenue' | 'customers' | 'active_bookings' | 'active_orders' | 'open_tasks' | 'repeat_customers'
     | 'outstanding_credit' | 'occupancy' | 'average_order_value' | 'today_sales' | 'today_bookings'
   /** Optional formatting: currency vs plain number. */
   format: 'currency' | 'number' | 'percent'
@@ -89,370 +89,81 @@ export interface BusinessTypeConfig {
 }
 
 // ------------------------------------------------------------------
-// Defaults per business type
+// Uniform configuration
 // ------------------------------------------------------------------
+// The app is one product, not one-app-per-industry. Every business type
+// resolves to the SAME config: same wording, KPIs, quick actions and
+// sidebar. The business type is still stored and shown in Profile as a
+// label (see BUSINESS_TYPE_NAMES), but it no longer changes the UI.
 
-const hospitalityKpis: KpiCardConfig[] = [
-  { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-  { id: 'customers', label: 'Guests', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-  { id: 'bookings', label: 'Bookings', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-  { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-  { id: 'repeat', label: 'Repeat Guests', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
+export const UNIFORM_QUICK_ACTIONS: QuickActionConfig[] = [
+  { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
+  { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
+  { id: 'order', label: 'New Order', target: '/orders?new=1', icon: 'order' },
+  { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
 ]
 
-const retailKpis: KpiCardConfig[] = [
-  { id: 'revenue', label: 'Sales', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-  { id: 'customers', label: 'Customers', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-  { id: 'bookings', label: 'Orders', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-  { id: 'credit', label: 'Outstanding Credit', icon: 'credit', positiveIsGood: false, metric: 'outstanding_credit', format: 'currency' },
-  { id: 'repeat', label: 'Frequent Buyers', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-]
-
-const serviceKpis: KpiCardConfig[] = [
-  { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-  { id: 'customers', label: 'Clients', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-  { id: 'bookings', label: 'Appointments', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-  { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-  { id: 'repeat', label: 'Repeat Clients', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-]
-
-function navWith(customers: string, bookings: string, orders: string): NavLabels {
-  return { overview: 'Overview', customers, bookings, orders }
+export const UNIFORM_NAV_LABELS: NavLabels = {
+  overview: 'Overview',
+  customers: 'Customers',
+  bookings: 'Bookings',
+  orders: 'Orders',
 }
 
-export const businessTypeConfigs: Record<BusinessType, BusinessTypeConfig> = {
-  hotel: {
-    type: 'hotel',
-    displayName: 'Hotel',
-    customerLabel: 'Guest',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Room',
-    defaultResources: ['Room 101', 'Room 102', 'Room 103', 'Room 201'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: hospitalityKpis,
-    navLabels: navWith('Guests', 'Bookings', 'Orders'),
-    quickActions: [
-      { id: 'customer', label: 'Add Guest', target: '/customers?new=1', icon: 'customer' },
-      { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'order', label: 'Record Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'note', label: 'Add Note', target: '/customers', icon: 'note' },
-      { id: 'payment', label: 'Record Payment', target: '/bookings', icon: 'payment' },
-    ],
-  },
-  resort: {
-    type: 'resort',
-    displayName: 'Resort',
-    customerLabel: 'Guest',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Room',
-    defaultResources: ['Room 101', 'Room 102', 'Room 203', 'Room 301'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: hospitalityKpis,
-    navLabels: navWith('Guests', 'Bookings', 'Orders'),
-    quickActions: [
-      { id: 'customer', label: 'Add Guest', target: '/customers?new=1', icon: 'customer' },
-      { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'order', label: 'Record Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'note', label: 'Add Note', target: '/customers', icon: 'note' },
-      { id: 'payment', label: 'Record Payment', target: '/bookings', icon: 'payment' },
-    ],
-  },
-  guesthouse: {
-    type: 'guesthouse',
-    displayName: 'Guesthouse',
-    customerLabel: 'Guest',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Room',
-    defaultResources: ['Room 1', 'Room 2', 'Room 3', 'Dorm 1'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: hospitalityKpis,
-    navLabels: navWith('Guests', 'Bookings', 'Orders'),
-    quickActions: [
-      { id: 'customer', label: 'Add Guest', target: '/customers?new=1', icon: 'customer' },
-      { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'order', label: 'Record Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'note', label: 'Add Note', target: '/customers', icon: 'note' },
-      { id: 'payment', label: 'Record Payment', target: '/bookings', icon: 'payment' },
-    ],
-  },
-  homestay: {
-    type: 'homestay',
-    displayName: 'Homestay',
-    customerLabel: 'Guest',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Room',
-    defaultResources: ['Room 1', 'Room 2', 'Room 3', 'Room 4'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: hospitalityKpis,
-    navLabels: navWith('Guests', 'Bookings', 'Orders'),
-    quickActions: [
-      { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Guest', target: '/customers?new=1', icon: 'customer' },
-      { id: 'order', label: 'Record Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'note', label: 'Add Note', target: '/customers', icon: 'note' },
-      { id: 'payment', label: 'Record Payment', target: '/bookings', icon: 'payment' },
-    ],
-  },
-  restaurant: {
-    type: 'restaurant',
-    displayName: 'Restaurant',
-    customerLabel: 'Customer',
-    bookingLabel: 'Reservation',
-    orderLabel: 'Order',
-    resourceLabel: 'Table',
-    defaultResources: ['Table 1', 'Table 2', 'Table 3', 'Table 4'],
-    primaryMetricLabel: 'Sales',
-    trendMetricLabel: 'Sales',
-    kpiCards: [
-      { id: 'revenue', label: 'Today Sales', icon: 'revenue', positiveIsGood: true, metric: 'today_sales', format: 'currency' },
-      { id: 'bookings', label: 'Reservations', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'orders', label: 'Orders', icon: 'bookings', positiveIsGood: true, metric: 'today_bookings', format: 'number' },
-      { id: 'aov', label: 'Avg Order', icon: 'aov', positiveIsGood: true, metric: 'average_order_value', format: 'currency' },
-      { id: 'tasks', label: 'Open Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-    ],
-    navLabels: navWith('Customers', 'Reservations', 'Orders'),
-    quickActions: [
-      { id: 'order', label: 'New Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'booking', label: 'New Reservation', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'payment', label: 'Record Payment', target: '/orders', icon: 'payment' },
-    ],
-  },
-  cafe: {
-    type: 'cafe',
-    displayName: 'Café',
-    customerLabel: 'Customer',
-    bookingLabel: 'Reservation',
-    orderLabel: 'Order',
-    resourceLabel: 'Table',
-    defaultResources: ['Table 1', 'Table 2', 'Table 3', 'Table 4'],
-    primaryMetricLabel: 'Sales',
-    trendMetricLabel: 'Sales',
-    kpiCards: [
-      { id: 'revenue', label: 'Today Sales', icon: 'revenue', positiveIsGood: true, metric: 'today_sales', format: 'currency' },
-      { id: 'bookings', label: 'Reservations', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'orders', label: 'Orders', icon: 'bookings', positiveIsGood: true, metric: 'today_bookings', format: 'number' },
-      { id: 'aov', label: 'Avg Order', icon: 'aov', positiveIsGood: true, metric: 'average_order_value', format: 'currency' },
-      { id: 'tasks', label: 'Open Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-    ],
-    navLabels: navWith('Customers', 'Reservations', 'Orders'),
-    quickActions: [
-      { id: 'order', label: 'New Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'booking', label: 'New Reservation', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'payment', label: 'Record Payment', target: '/orders', icon: 'payment' },
-    ],
-  },
-  salon: {
-    type: 'salon',
-    displayName: 'Salon',
-    customerLabel: 'Client',
-    bookingLabel: 'Appointment',
-    orderLabel: 'Service',
-    resourceLabel: 'Stylist',
-    defaultResources: ['Stylist 1', 'Stylist 2', 'Stylist 3'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: serviceKpis,
-    navLabels: navWith('Clients', 'Appointments', 'Services'),
-    quickActions: [
-      { id: 'booking', label: 'New Appointment', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Client', target: '/customers?new=1', icon: 'customer' },
-      { id: 'order', label: 'New Service', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'payment', label: 'Record Payment', target: '/orders', icon: 'payment' },
-    ],
-  },
-  beauty: {
-    type: 'beauty',
-    displayName: 'Beauty Studio',
-    customerLabel: 'Client',
-    bookingLabel: 'Appointment',
-    orderLabel: 'Service',
-    resourceLabel: 'Therapist',
-    defaultResources: ['Therapist 1', 'Therapist 2', 'Therapist 3'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: serviceKpis,
-    navLabels: navWith('Clients', 'Appointments', 'Services'),
-    quickActions: [
-      { id: 'booking', label: 'New Appointment', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Client', target: '/customers?new=1', icon: 'customer' },
-      { id: 'order', label: 'New Service', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'payment', label: 'Record Payment', target: '/orders', icon: 'payment' },
-    ],
-  },
-  tour_operator: {
-    type: 'tour_operator',
-    displayName: 'Tour Operator',
-    customerLabel: 'Traveler',
-    bookingLabel: 'Tour',
-    orderLabel: 'Sale',
-    resourceLabel: 'Tour Slot',
-    defaultResources: ['Morning Tour', 'Afternoon Tour', 'Evening Departure'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: [
-      { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-      { id: 'customers', label: 'Travelers', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-      { id: 'bookings', label: 'Tours Sold', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-      { id: 'repeat', label: 'Repeat Travelers', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-    ],
-    navLabels: navWith('Travelers', 'Tours', 'Sales'),
-    quickActions: [
-      { id: 'booking', label: 'Book Tour', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Traveler', target: '/customers?new=1', icon: 'customer' },
-      { id: 'order', label: 'Record Sale', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-      { id: 'lead', label: 'New Inquiry', target: '/leads?new=1', icon: 'lead' },
-    ],
-  },
-  agency: {
-    type: 'agency',
-    displayName: 'Agency',
-    customerLabel: 'Client',
-    bookingLabel: 'Booking',
-    orderLabel: 'Sale',
-    resourceLabel: 'Account',
-    defaultResources: ['Account 1', 'Account 2', 'Account 3'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: [
-      { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-      { id: 'customers', label: 'Clients', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-      { id: 'bookings', label: 'Open Deals', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'credit', label: 'Outstanding Credit', icon: 'credit', positiveIsGood: false, metric: 'outstanding_credit', format: 'currency' },
-      { id: 'repeat', label: 'Repeat Clients', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-    ],
-    navLabels: navWith('Clients', 'Deals', 'Sales'),
-    quickActions: [
-      { id: 'customer', label: 'Add Client', target: '/customers?new=1', icon: 'customer' },
-      { id: 'booking', label: 'New Deal', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'order', label: 'Record Sale', target: '/orders?new=1', icon: 'order' },
-      { id: 'lead', label: 'New Lead', target: '/leads?new=1', icon: 'lead' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-    ],
-  },
-  sari_sari: {
-    type: 'sari_sari',
-    displayName: 'Sari-Sari Store',
-    customerLabel: 'Customer',
-    bookingLabel: 'Booking',
-    orderLabel: 'Sale',
-    resourceLabel: 'Counter',
-    defaultResources: ['Counter', 'Delivery'],
-    primaryMetricLabel: 'Sales',
-    trendMetricLabel: 'Sales',
-    kpiCards: [
-      { id: 'revenue', label: 'Today Sales', icon: 'revenue', positiveIsGood: true, metric: 'today_sales', format: 'currency' },
-      { id: 'orders', label: 'Sales', icon: 'bookings', positiveIsGood: true, metric: 'today_bookings', format: 'number' },
-      { id: 'customers', label: 'Customers', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-      { id: 'credit', label: 'Outstanding Credit', icon: 'credit', positiveIsGood: false, metric: 'outstanding_credit', format: 'currency' },
-      { id: 'repeat', label: 'Frequent Buyers', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-    ],
-    navLabels: navWith('Customers', 'Credit', 'Sales'),
-    quickActions: [
-      { id: 'order', label: 'Record Sale', target: '/orders?new=1', icon: 'order' },
-      { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
-      { id: 'payment', label: 'Collect Payment', target: '/orders', icon: 'payment' },
-      { id: 'credits', label: 'Record Credit', target: '/orders?new=1', icon: 'lead' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-    ],
-  },
-  retail: {
-    type: 'retail',
-    displayName: 'Retail',
-    customerLabel: 'Customer',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Counter',
-    defaultResources: ['Counter 1', 'Counter 2'],
-    primaryMetricLabel: 'Sales',
-    trendMetricLabel: 'Sales',
-    kpiCards: retailKpis,
-    navLabels: navWith('Customers', 'Account', 'Orders'),
-    quickActions: [
-      { id: 'order', label: 'Record Sale', target: '/orders?new=1', icon: 'order' },
-      { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
-      { id: 'payment', label: 'Collect Payment', target: '/orders', icon: 'payment' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-    ],
-  },
-  service: {
-    type: 'service',
-    displayName: 'Service Business',
-    customerLabel: 'Client',
-    bookingLabel: 'Appointment',
-    orderLabel: 'Service Order',
-    resourceLabel: 'Slot',
-    defaultResources: ['Morning', 'Afternoon', 'Evening'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: [
-      { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-      { id: 'customers', label: 'Clients', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-      { id: 'bookings', label: 'Appointments', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-      { id: 'repeat', label: 'Repeat Clients', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-    ],
-    navLabels: navWith('Clients', 'Appointments', 'Orders'),
-    quickActions: [
-      { id: 'booking', label: 'New Appointment', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'customer', label: 'Add Client', target: '/customers?new=1', icon: 'customer' },
-      { id: 'order', label: 'New Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-    ],
-  },
-  other: {
-    type: 'other',
-    displayName: 'Business',
-    customerLabel: 'Customer',
-    bookingLabel: 'Booking',
-    orderLabel: 'Order',
-    resourceLabel: 'Resource',
-    defaultResources: ['Slot A', 'Slot B', 'Slot C'],
-    primaryMetricLabel: 'Revenue',
-    trendMetricLabel: 'Revenue',
-    kpiCards: [
-      { id: 'revenue', label: 'Revenue', icon: 'revenue', positiveIsGood: true, metric: 'revenue', format: 'currency' },
-      { id: 'customers', label: 'Customers', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
-      { id: 'bookings', label: 'Bookings / Orders', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
-      { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
-      { id: 'repeat', label: 'Repeat Customers', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
-    ],
-    navLabels: { overview: 'Overview', customers: 'Customers', bookings: 'Bookings', orders: 'Orders' },
-    quickActions: [
-      { id: 'customer', label: 'Add Customer', target: '/customers?new=1', icon: 'customer' },
-      { id: 'booking', label: 'Create Booking', target: '/bookings?new=1', icon: 'booking' },
-      { id: 'order', label: 'New Order', target: '/orders?new=1', icon: 'order' },
-      { id: 'task', label: 'Create Task', target: '/tasks?new=1', icon: 'task' },
-    ],
-  },
+export const UNIFORM_KPI_CARDS: KpiCardConfig[] = [
+  { id: 'customers', label: 'Customers', icon: 'customers', positiveIsGood: true, metric: 'customers', format: 'number' },
+  { id: 'bookings', label: 'Bookings', icon: 'bookings', positiveIsGood: true, metric: 'active_bookings', format: 'number' },
+  { id: 'orders', label: 'Orders', icon: 'orders', positiveIsGood: true, metric: 'active_orders', format: 'number' },
+  { id: 'tasks', label: 'Pending Tasks', icon: 'tasks', positiveIsGood: false, metric: 'open_tasks', format: 'number' },
+  { id: 'repeat', label: 'Repeat Customers', icon: 'repeat', positiveIsGood: true, metric: 'repeat_customers', format: 'number' },
+]
+
+/** Everything except the identity fields (`type`, `displayName`). */
+const UNIFORM_CONFIG: Omit<BusinessTypeConfig, 'type' | 'displayName'> = {
+  customerLabel: 'Customer',
+  bookingLabel: 'Booking',
+  orderLabel: 'Order',
+  resourceLabel: 'Resource',
+  defaultResources: ['Resource 1', 'Resource 2', 'Resource 3'],
+  primaryMetricLabel: 'Revenue',
+  trendMetricLabel: 'Revenue',
+  kpiCards: UNIFORM_KPI_CARDS,
+  quickActions: UNIFORM_QUICK_ACTIONS,
+  navLabels: UNIFORM_NAV_LABELS,
+  widgets: DEFAULT_WIDGETS,
+}
+
+/** Display name per business type — the only thing the type still affects. */
+export const BUSINESS_TYPE_NAMES: Record<BusinessType, string> = {
+  hotel: 'Hotel',
+  resort: 'Resort',
+  guesthouse: 'Guesthouse',
+  homestay: 'Homestay',
+  restaurant: 'Restaurant',
+  cafe: 'Café',
+  salon: 'Salon',
+  beauty: 'Beauty Studio',
+  tour_operator: 'Tour Operator',
+  agency: 'Agency',
+  sari_sari: 'Sari-Sari Store',
+  retail: 'Retail',
+  service: 'Service Business',
+  other: 'Business',
 }
 
 export function getBusinessTypeConfig(type: BusinessType): BusinessTypeConfig {
-  const config = businessTypeConfigs[type] ?? businessTypeConfigs.other
-  return { ...config, widgets: config.widgets ?? DEFAULT_WIDGETS }
+  return {
+    ...UNIFORM_CONFIG,
+    type,
+    displayName: BUSINESS_TYPE_NAMES[type] ?? BUSINESS_TYPE_NAMES.other,
+  }
 }
 
-// Persistable shape (a trimmed copy safe to store in settings).
+// Persistable shape (a trimmed copy safe to store in settings). Only the
+// per-workspace widget visibility is still read back; every other field is
+// uniform and kept here for back-compat with older stored configs.
 export interface DashboardConfigJSON {
+  type?: BusinessType
   kpiCards: KpiCardConfig[]
   quickActions: QuickActionConfig[]
   navLabels: NavLabels
@@ -461,6 +172,7 @@ export interface DashboardConfigJSON {
 
 export function toDashboardConfigJSON(config: BusinessTypeConfig): DashboardConfigJSON {
   return {
+    type: config.type,
     kpiCards: config.kpiCards,
     quickActions: config.quickActions,
     navLabels: config.navLabels,
@@ -470,13 +182,9 @@ export function toDashboardConfigJSON(config: BusinessTypeConfig): DashboardConf
 
 export function fromDashboardConfigJSON(json: DashboardConfigJSON | null | undefined, fallback: BusinessTypeConfig): BusinessTypeConfig {
   if (!json) return fallback
-  return {
-    ...fallback,
-    widgets: { ...DEFAULT_WIDGETS, ...(json.widgets ?? {}) },
-    kpiCards: Array.isArray(json.kpiCards) && json.kpiCards.length ? json.kpiCards : fallback.kpiCards,
-    quickActions: Array.isArray(json.quickActions) && json.quickActions.length ? json.quickActions : fallback.quickActions,
-    navLabels: json.navLabels ?? fallback.navLabels,
-  }
+  // The dashboard is uniform across business types; the only thing a stored
+  // config still controls is which dashboard sections are shown.
+  return { ...fallback, widgets: { ...DEFAULT_WIDGETS, ...(json.widgets ?? {}) } }
 }
 
 export type { BookingStatus, OrderStatus, PaymentStatus }

@@ -3,6 +3,7 @@ import { Sidebar } from '@/layouts/Sidebar'
 import { Header } from '@/layouts/Header'
 import { MobileActionBar } from '@/components/MobileActionBar'
 import { CommandPalette } from '@/components/CommandPalette'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { getInstanceConfig } from '@/services/instanceConfigService'
 import type { InstanceConfig } from '@/types'
 
@@ -61,14 +62,27 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   useEffect(() => {
     getInstanceConfig().then(applyBranding)
+    const onBrandingChanged = () => {
+      getInstanceConfig().then(applyBranding)
+    }
+    window.addEventListener('localflow:branding-changed', onBrandingChanged)
+    return () => {
+      window.removeEventListener('localflow:branding-changed', onBrandingChanged)
+    }
   }, [])
 
   return (
-    <div className="min-h-screen bg-surface-50">
-      <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <div className="lg:pl-64">
-        <Header onMenuClick={() => setMobileOpen(true)} />
-        <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 lg:pb-8">{children}</main>
+    <div className="h-screen">
+      <div className="h-full w-full overflow-hidden bg-white">
+        <div className="flex h-full">
+          <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+          <div className="flex-1 min-w-0 bg-accent-50 overflow-y-auto">
+            <Header onMenuClick={() => setMobileOpen(true)} />
+            <main className="px-5 sm:px-7 lg:px-9 py-7 pb-24 lg:pb-10">
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
+          </div>
+        </div>
       </div>
       <MobileActionBar />
       <CommandPalette />

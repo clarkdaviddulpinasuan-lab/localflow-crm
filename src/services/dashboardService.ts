@@ -1,4 +1,4 @@
-import { subDays, eachDayOfInterval, format, parseISO } from 'date-fns'
+import { subDays, eachDayOfInterval, format, parseISO, startOfDay } from 'date-fns'
 import { listOrders } from '@/services/orderService'
 import { listBookings } from '@/services/bookingService'
 import { listTasks } from '@/services/taskService'
@@ -7,6 +7,7 @@ import { listLeads } from '@/services/leadService'
 import { listActivities } from '@/services/activityService'
 import { formatCurrency, calculatePercentageChange } from '@/utils/format'
 import type { KpiCardConfig } from '@/config/businessTypes'
+import type { PaymentStatus } from '@/types'
 
 export type TrendRange = 7 | 30 | 90
 
@@ -15,15 +16,20 @@ export interface Kpi {
   label: string
   value: number
   display: string
-  change: number
+  change: number | null
   changeLabel: string
   positiveIsGood: boolean
-  icon: 'revenue' | 'customers' | 'bookings' | 'tasks' | 'repeat' | 'credit' | 'occupancy' | 'aov'
+  icon: 'revenue' | 'customers' | 'bookings' | 'orders' | 'tasks' | 'repeat' | 'credit' | 'occupancy' | 'aov'
 }
 
 export interface DailyPoint {
   date: string
   label: string
+  value: number
+}
+
+export interface PaymentStatusPoint {
+  name: string
   value: number
 }
 
@@ -41,6 +47,7 @@ export interface MetricSet {
   revenue: number
   customers: number
   activeBookings: number
+  activeOrders: number
   openTasks: number
   repeatCustomers: number
   outstandingCredit: number
@@ -48,17 +55,14 @@ export interface MetricSet {
   todaySales: number
   todayBookings: number
   averageOrderValue: number
-  // period-over-period deltas (current vs previous window)
-  revenueChange: number
+  occupancyRate: number
+  // Real period-over-period deltas: current window vs the equal window before
+  // it. Metrics with no measured comparison expose no change at all.
   customersChange: number
   activeBookingsChange: number
+  activeOrdersChange: number
   openTasksChange: number
   repeatCustomersChange: number
-  outstandingCreditChange: number
-  todaySalesChange: number
-  todayBookingsChange: number
-  averageOrderValueChange: number
-  occupancyRate: number
   occupancyChange: number
 }
 
@@ -70,22 +74,20 @@ function dateKey(d: Date): string {
   return format(d, 'yyyy-MM-dd')
 }
 
-// Aggregate a stream of {value, date} points over two equal windows
-// and return {current, previous} and percentage change.
-function windowCompare(points: { date: string; value: number }[], windowDays: number) {
-  const now = new Date()
-  const currentStart = subDays(now, windowDays - 1)
-  const currentEnd = now
-  const prevStart = subDays(currentStart, windowDays)
-  const prevEnd = subDays(currentStart, 1)
-
-  const inRange = (d: Date, start: Date, end: Date) => d >= start && d <= end
+// Count records landing in the current window and in the equal window directly
+// before it, so a change figure is a real like-for-like comparison. Boundaries
+// are normalised to midnight; the previous helper kept the current time-of-day
+// and so silently dropped the first day of every window.
+function periodCounts(dates: (string | null | undefined)[], windowDays: number): { current: number; previous: number } {
+  const currentStart = subDays(startOfDay(new Date()), windowDays - 1)
+  const previousStart = subDays(currentStart, windowDays)
   let current = 0
   let previous = 0
-  points.forEach((p) => {
-    const d = parseISO(p.date)
-    if (inRange(d, currentStart, currentEnd)) current += p.value
-    else if (inRange(d, prevStart, prevEnd)) previous += p.value
+  dates.forEach((raw) => {
+    if (!raw) return
+    const d = startOfDay(parseISO(raw))
+    if (d >= currentStart) current += 1
+    else if (d >= previousStart) previous += 1
   })
   return { current, previous }
 }
@@ -130,6 +132,47 @@ export async function revenueTrend(range: TrendRange): Promise<DailyPoint[]> {
       value: Math.round((orderByDay.get(k) ?? 0) + (bookingByDay.get(k) ?? 0)),
     }
   })
+}
+
+// Page through a list endpoint so a server-side row cap can never silently
+// truncate a total.
+async function fetchAllRows<T>(
+  fetchPage: (page: number, perPage: number) => Promise<{ data: T[]; total: number }>
+): Promise<T[]> {
+  const perPage = 1000
+  const first = await fetchPage(1, perPage)
+  const rows = [...first.data]
+  const pages = Math.ceil(first.total / perPage)
+  for (let p = 2; p <= pages; p += 1) {
+    const next = await fetchPage(p, perPage)
+    if (next.data.length === 0) break
+    rows.push(...next.data)
+  }
+  return rows
+}
+
+// Combined booking + order amounts grouped by payment status, across every
+// record. Deliberately unwindowed and unfiltered by booking/order status so the
+// totals reconcile with the Bookings and Orders list pages.
+export async function paymentStatusBreakdown(): Promise<PaymentStatusPoint[]> {
+  const [orders, bookings] = await Promise.all([
+    fetchAllRows((page, perPage) => listOrders({ page, perPage, sortBy: 'created_at', sortDir: 'asc' })),
+    fetchAllRows((page, perPage) => listBookings({ page, perPage, sortBy: 'created_at', sortDir: 'asc' })),
+  ])
+
+  const totals: Record<PaymentStatus, number> = { paid: 0, partial: 0, pending: 0, refunded: 0 }
+
+  orders.forEach((ord) => {
+    if (ord.payment_status in totals) totals[ord.payment_status] += ord.total ?? 0
+  })
+  bookings.forEach((booking) => {
+    if (booking.payment_status in totals) totals[booking.payment_status] += booking.amount ?? 0
+  })
+
+  const order: PaymentStatus[] = ['paid', 'partial', 'pending', 'refunded']
+  return order
+    .filter((k) => totals[k] > 0)
+    .map((k) => ({ name: k, value: Math.round(totals[k]) }))
 }
 
 export async function customerGrowth(range: TrendRange): Promise<DailyPoint[]> {
@@ -177,27 +220,32 @@ export async function computeMetricSet(range: TrendRange = 30): Promise<MetricSe
 
   const today = todayISO()
 
-  // --- Revenue ---
-  const revCmp = windowCompare(
-    revenuePoints.map((p) => ({ date: p.date, value: p.value })),
+  // --- Revenue (kept for the legacy 'revenue' metric; no preset uses it) ---
+  const revenue = Math.round(
+    revenuePoints.reduce((sum, p) => sum + p.value, 0)
+  )
+
+  // --- Customers added in the window ---
+  const custCmp = periodCounts(customers.map((c) => c.created_at), range)
+  const customersCount = custCmp.current
+  const customersChange = calculatePercentageChange(custCmp.current, custCmp.previous)
+
+  // --- Bookings and orders added in the window, kept separate. Counted by
+  // created_at ("when it was added"), so a booking made now for a future date
+  // still counts today. ---
+  const bookingsCmp = periodCounts(
+    bookings.filter((b) => b.status !== 'cancelled' && b.status !== 'no_show').map((b) => b.created_at),
     range
   )
-  const revenue = Math.round(revCmp.current)
-  const revenueChange = calculatePercentageChange(revCmp.current, revCmp.previous)
+  const activeBookings = bookingsCmp.current
+  const activeBookingsChange = calculatePercentageChange(bookingsCmp.current, bookingsCmp.previous)
 
-  // --- Customers ---
-  const customersCreated = customers.map((c) => ({ date: c.created_at.slice(0, 10), value: 1 }))
-  const custCmp = windowCompare(customersCreated, range)
-  const customersCount = customers.length
-  const customersChange = calculatePercentageChange(custCmp.current, Math.max(1, custCmp.previous))
-
-  // --- Active bookings ---
-  const activeBookingDates = bookings
-    .filter((b) => b.status === 'confirmed' || b.status === 'pending' || b.status === 'checked_in')
-    .map((b) => ({ date: b.date, value: 1 }))
-  const activeCmp = windowCompare(activeBookingDates, range)
-  const activeBookings = activeCmp.current
-  const activeBookingsChange = calculatePercentageChange(activeCmp.current, Math.max(1, activeCmp.previous))
+  const ordersCmp = periodCounts(
+    orders.filter((o) => o.status !== 'cancelled').map((o) => o.created_at),
+    range
+  )
+  const activeOrders = ordersCmp.current
+  const activeOrdersChange = calculatePercentageChange(ordersCmp.current, ordersCmp.previous)
 
   // --- Today bookings (orders + bookings created today) ---
   const todayOrders = orders.filter((o) => o.created_at.slice(0, 10) === today && o.status !== 'cancelled').length
@@ -213,19 +261,27 @@ export async function computeMetricSet(range: TrendRange = 30): Promise<MetricSe
     .reduce((s, o) => s + o.total, 0)
 
   // --- Tasks ---
-  const openTasks = tasks.filter((t) => t.status !== 'completed').length
-  const taskCompleted = tasks.filter((t) => t.status === 'completed').length
-  const openTasksChange = calculatePercentageChange(openTasks, Math.max(1, openTasks + taskCompleted - openTasks))
+  const tasksCmp = periodCounts(
+    tasks.filter((t) => t.status !== 'completed').map((t) => t.created_at),
+    range
+  )
+  const openTasks = tasksCmp.current
+  const openTasksChange = calculatePercentageChange(tasksCmp.current, tasksCmp.previous)
 
   // --- Repeat customers ---
-  const repeatCustomers = customers.filter((c) => c.visit_count > 1).length
-  const repeatCustomersChange = calculatePercentageChange(repeatCustomers, Math.max(1, repeatCustomers - (repeatCustomers > 1 ? 1 : 0)))
+  // Repeat customers seen in the window, dated by their last activity, so the
+  // figure moves with recent trade rather than sitting at an all-time total.
+  const repeatCmp = periodCounts(
+    customers.filter((c) => c.visit_count > 1).map((c) => c.last_activity),
+    range
+  )
+  const repeatCustomers = repeatCmp.current
+  const repeatCustomersChange = calculatePercentageChange(repeatCmp.current, repeatCmp.previous)
 
   // --- Average order value ---
   const nonCancelledOrders = orders.filter((o) => o.status !== 'cancelled')
   const avgTotal = nonCancelledOrders.reduce((s, o) => s + o.total, 0)
   const averageOrderValue = nonCancelledOrders.length ? avgTotal / nonCancelledOrders.length : 0
-  const averageOrderValueChange = averageOrderValue > 0 ? calculatePercentageChange(averageOrderValue, averageOrderValue * 0.9) : 0
 
   // --- Occupancy (for hospitality: resource utilization today vs capacity) ---
   // Capacity comes from the business-type config's default resources, so the
@@ -259,6 +315,7 @@ export async function computeMetricSet(range: TrendRange = 30): Promise<MetricSe
     revenue,
     customers: customersCount,
     activeBookings,
+    activeOrders,
     openTasks,
     repeatCustomers,
     outstandingCredit,
@@ -266,34 +323,43 @@ export async function computeMetricSet(range: TrendRange = 30): Promise<MetricSe
     todaySales,
     todayBookings,
     averageOrderValue,
-    revenueChange,
+    occupancyRate,
     customersChange,
     activeBookingsChange,
+    activeOrdersChange,
     openTasksChange,
     repeatCustomersChange,
-    outstandingCreditChange: 0,
-    todaySalesChange: 0,
-    todayBookingsChange: 0,
-    averageOrderValueChange,
-    occupancyRate,
     occupancyChange,
   }
 }
 
-function kpiDisplay(metric: string, m: MetricSet): { value: number; change: number } {
+// How each metric is scoped, so the card can say what it is showing instead of
+// implying a comparison that was never measured.
+const METRIC_BASIS: Record<string, string> = {
+  revenue: 'All time',
+  outstanding_credit: 'All time',
+  average_order_value: 'All time average',
+  today_sales: 'Today',
+  today_bookings: 'Today',
+}
+
+function kpiDisplay(metric: string, m: MetricSet): { value: number; change: number | null } {
   let value = 0
-  let change = 0
+  // null means there is no measured comparison for this metric, so the card
+  // shows its basis instead of a percentage.
+  let change: number | null = null
   switch (metric) {
-    case 'revenue': value = m.revenue; change = m.revenueChange; break
+    case 'revenue': value = m.revenue; break
     case 'customers': value = m.customers; change = m.customersChange; break
     case 'active_bookings': value = m.activeBookings; change = m.activeBookingsChange; break
+    case 'active_orders': value = m.activeOrders; change = m.activeOrdersChange; break
     case 'open_tasks': value = m.openTasks; change = m.openTasksChange; break
     case 'repeat_customers': value = m.repeatCustomers; change = m.repeatCustomersChange; break
-    case 'outstanding_credit': value = m.outstandingCredit; change = m.outstandingCreditChange; break
+    case 'outstanding_credit': value = m.outstandingCredit; break
     case 'occupancy': value = m.occupancyRate; change = m.occupancyChange; break
-    case 'average_order_value': value = m.averageOrderValue; change = m.averageOrderValueChange; break
-    case 'today_sales': value = m.todaySales; change = m.todaySalesChange; break
-    case 'today_bookings': value = m.todayBookings; change = m.todayBookingsChange; break
+    case 'average_order_value': value = m.averageOrderValue; break
+    case 'today_sales': value = m.todaySales; break
+    case 'today_bookings': value = m.todayBookings; break
   }
   return { value, change }
 }
@@ -309,7 +375,7 @@ export async function computeKpisFromConfig(cardConfigs: KpiCardConfig[], range:
       value,
       display: formatKpi(c, value),
       change,
-      changeLabel: 'vs last period',
+      changeLabel: METRIC_BASIS[c.metric] ?? `vs previous ${range}d`,
       positiveIsGood: c.positiveIsGood,
       icon: c.icon,
     }

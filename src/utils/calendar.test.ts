@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   getViewDates,
   isCurrentMonth,
@@ -8,9 +8,30 @@ import {
   viewTitle,
   bookingToEvent,
   bookingToEvents,
+  weekStart,
 } from '@/utils/calendar'
+import { savePreferences, defaultPreferences } from '@/services/settingsService'
+
+beforeEach(() => {
+  savePreferences(defaultPreferences())
+})
 
 describe('calendar utils', () => {
+  it('weekStart defaults to Monday (1)', () => {
+    expect(weekStart()).toBe(1)
+  })
+
+  it('weekStart returns 0 when Sunday is preferred', () => {
+    savePreferences({ ...defaultPreferences(), weekStartsOn: 'sunday' })
+    expect(weekStart()).toBe(0)
+  })
+
+  it('month grid starts on the preferred weekday', () => {
+    savePreferences({ ...defaultPreferences(), weekStartsOn: 'sunday' })
+    const days = getViewDates('month', new Date(2025, 0, 15))
+    expect(days[0].getDay()).toBe(0)
+  })
+
   it('month view returns consecutive days starting Monday', () => {
     const days = getViewDates('month', new Date(2025, 0, 15))
     expect(days.length).toBeGreaterThanOrEqual(35)

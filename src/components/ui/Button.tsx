@@ -15,21 +15,21 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<Variant, string> = {
   primary:
-    'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-sm',
+    'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-soft',
   secondary:
-    'bg-white text-surface-700 border border-surface-200 hover:bg-surface-50 active:bg-surface-100 shadow-sm',
+    'bg-white text-surface-700 border border-surface-200 hover:bg-surface-50 active:bg-surface-100 shadow-soft',
   ghost:
     'text-surface-600 hover:bg-surface-100 active:bg-surface-200',
   danger:
-    'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 shadow-sm',
+    'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 shadow-soft',
   success:
-    'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 shadow-sm',
+    'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 shadow-soft',
 }
 
 const sizeStyles: Record<Size, string> = {
-  sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
-  md: 'h-10 px-4 text-sm gap-2 rounded-lg',
-  lg: 'h-11 px-6 text-base gap-2.5 rounded-lg',
+  sm: 'h-8 px-3 text-xs gap-1.5 rounded-[10px]',
+  md: 'h-10 px-4 text-sm gap-2 rounded-[10px]',
+  lg: 'h-11 px-6 text-base gap-2.5 rounded-[10px]',
 }
 
 export function Button({

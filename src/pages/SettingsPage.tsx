@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Save, Trash2, Mail } from 'lucide-react'
+import { Save, Trash2, Mail, Palette, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -17,11 +17,23 @@ import {
   ROLE_LABELS,
   type Preferences,
 } from '@/services/settingsService'
+import {
+  getInstanceConfig,
+  saveInstanceConfig,
+  DEFAULT_INSTANCE_CONFIG,
+} from '@/services/instanceConfigService'
 import { can } from '@/utils/permissions'
-import type { MessageConfig, Profile } from '@/types'
+import type { InstanceConfig, InstanceFeatures, MessageConfig, Profile } from '@/types'
 import { cn } from '@/lib/cn'
 
-type SettingsTab = 'profile' | 'preferences' | 'notifications' | 'messaging' | 'data'
+type SettingsTab = 'profile' | 'preferences' | 'notifications' | 'messaging' | 'whitelabel' | 'data'
+
+const FEATURE_LABELS: { key: keyof InstanceFeatures; label: string; hint: string }[] = [
+  { key: 'public_shopfront', label: 'Public shopfront', hint: 'Allow a public, shareable page for this business.' },
+  { key: 'online_payments', label: 'Online payments', hint: 'Enable card/payment collection on bookings and orders.' },
+  { key: 'customer_reviews', label: 'Customer reviews', hint: 'Collect and display reviews from customers.' },
+  { key: 'guest_bookings', label: 'Guest bookings', hint: 'Let customers book without an account.' },
+]
 
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
   return (
@@ -54,19 +66,29 @@ export function SettingsPage() {
   const [prefs, setPrefs] = useState<Preferences>(() => getPreferences())
   const [msgCfg, setMsgCfg] = useState<MessageConfig>(() => defaultMessageConfig())
   const providers = getMessageProvidersConfig()
+  const [instance, setInstance] = useState<InstanceConfig>(DEFAULT_INSTANCE_CONFIG)
+  const [savedInstance, setSavedInstance] = useState(false)
 
   useEffect(() => {
     getProfile().then(setP)
     getMessageConfig().then(setMsgCfg)
+    getInstanceConfig().then(setInstance)
   }, [])
 
   const canManageSettings = can(role, 'manage:settings')
+
+  async function saveInstance() {
+    await saveInstanceConfig(instance)
+    setSavedInstance(true)
+    setTimeout(() => setSavedInstance(false), 2500)
+  }
 
   const tabs: { value: SettingsTab; label: string }[] = [
     { value: 'profile', label: 'My Profile' },
     { value: 'preferences', label: 'Preferences' },
     { value: 'notifications', label: 'Notification Settings' },
     { value: 'messaging', label: 'Messaging' },
+    ...(canManageSettings ? [{ value: 'whitelabel' as const, label: 'White-label & Instance' }] : []),
     { value: 'data', label: 'Data & Safety' },
   ]
 
@@ -235,6 +257,70 @@ export function SettingsPage() {
             </div>
           </Card>
         </div>
+      )}
+
+      {tab === 'whitelabel' && canManageSettings && (
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Palette className="h-5 w-5 text-primary-600" />
+            <h3 className="text-base font-semibold text-surface-900">White-label & Instance</h3>
+          </div>
+          <p className="text-sm text-surface-500 mb-5 leading-relaxed">
+            Tenant-level settings for white-label deployments: an optional app name (shown in the browser title),
+            a custom domain, a brand accent color applied to the primary palette, and feature switches.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+            <Input
+              label="App name (browser title)"
+              value={instance.app_name ?? ''}
+              onChange={(e) => setInstance({ ...instance, app_name: e.target.value || null })}
+              placeholder={business?.name}
+            />
+            <Input
+              label="Custom domain"
+              value={instance.custom_domain ?? ''}
+              onChange={(e) => setInstance({ ...instance, custom_domain: e.target.value || null })}
+              placeholder="book.mydomain.com"
+            />
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-surface-700">Brand accent color</span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={instance.primary_color ?? '#7b6bf2'}
+                  onChange={(e) => setInstance({ ...instance, primary_color: e.target.value || null })}
+                  className="h-10 w-14 rounded-md border border-surface-200 bg-white p-1"
+                />
+                <span className="text-sm text-surface-500">{instance.primary_color ?? '#7b6bf2 (default)'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3 border-t border-surface-200 pt-5">
+            {FEATURE_LABELS.map(({ key, label, hint }) => (
+              <label key={key} className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-primary-600"
+                  checked={instance.features[key]}
+                  onChange={(e) => setInstance({ ...instance, features: { ...instance.features, [key]: e.target.checked } })}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-surface-900">{label}</span>
+                  <span className="block text-xs text-surface-500">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-6 flex flex-row items-center justify-end gap-3">
+            {savedInstance && (
+              <div className="inline-flex items-center gap-2 rounded-lg border border-success-200 bg-success-50 px-3 py-2 shadow-soft">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-600" />
+                <p className="text-sm font-semibold text-success-700">Saved changes</p>
+              </div>
+            )}
+            <Button icon={<Save className="h-4 w-4" />} onClick={saveInstance}>{savedInstance ? 'Saved' : 'Save Instance'}</Button>
+          </div>
+        </Card>
       )}
 
       {tab === 'data' && (

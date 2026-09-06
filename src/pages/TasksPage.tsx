@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, ClipboardList, CheckCircle2, LayoutList, LayoutGrid } from 'lucide-react'
+import { Plus, ClipboardList, CheckCircle2, LayoutList, LayoutGrid, ChevronRight, AlertTriangle, RotateCw } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +16,7 @@ import { TaskForm, type TaskFormData } from '@/features/tasks/TaskForm'
 import { cn } from '@/lib/cn'
 import { listTasks, createTask, updateTask, completeTask, taskSearchFields } from '@/services/taskService'
 import { listCustomers } from '@/services/customerService'
+import { getPreferences } from '@/services/settingsService'
 import type { Task, TaskStatus } from '@/types'
 
 const BOARD_COLUMNS: { key: TaskStatus; label: string }[] = [
@@ -31,6 +32,7 @@ export function TasksPage() {
   const [data, setData] = useState<Task[]>([])
   const [customers, setCustomers] = useState<{ value: string; label: string }[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
@@ -46,8 +48,23 @@ export function TasksPage() {
 
   const defaultCustomerId = searchParams.get('customer') ?? undefined
 
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (!editId) return
+    listTasks({ perPage: 9999 }).then((res) => {
+      const target = res.data.find((t) => t.id === editId)
+      if (target) {
+        setEditing(target)
+        setModalOpen(true)
+      }
+    })
+    // Run once on mount; the page is entered fresh from the calendar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const loadData = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const res = await listTasks({
         search,
@@ -59,6 +76,8 @@ export function TasksPage() {
       })
       setData(res.data)
       setTotal(res.total)
+    } catch {
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -164,6 +183,7 @@ export function TasksPage() {
             {r.description && <p className="text-xs text-surface-500 truncate max-w-md">{r.description}</p>}
           </div>
         ),
+        mobilePriority: 1,
       },
       {
         key: 'customer',
@@ -172,12 +192,14 @@ export function TasksPage() {
         sortValue: (r) => customerName(r.customer_id ?? undefined),
         render: (r) => <span className="text-surface-700">{customerName(r.customer_id ?? undefined)}</span>,
         hideOnMobile: true,
+        mobilePriority: 2,
       },
       {
         key: 'priority',
         header: 'Priority',
         sortable: true,
         render: (r) => <Badge variant={getStatusBadge(r.priority).variant}>{getStatusBadge(r.priority).label}</Badge>,
+        mobilePriority: 1,
       },
       {
         key: 'due_date',
@@ -189,6 +211,7 @@ export function TasksPage() {
             {isOverdue(r) && ' • Overdue'}
           </span>
         ),
+        mobilePriority: 2,
       },
       {
         key: 'status',
@@ -196,6 +219,7 @@ export function TasksPage() {
         sortable: true,
         render: (r) => <Badge variant={getStatusBadge(r.status).variant}>{getStatusBadge(r.status).label}</Badge>,
         hideOnMobile: true,
+        mobilePriority: 1,
       },
       {
         key: 'actions',
@@ -217,6 +241,26 @@ export function TasksPage() {
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [customerName]
+  )
+
+  const mobileCardRender = (t: Task) => (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className={cn('font-medium text-surface-900', t.status === 'completed' && 'line-through text-surface-400')}>
+          {t.title}
+        </p>
+        {t.description && <p className="text-xs text-surface-500 truncate mt-0.5">{t.description}</p>}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <Badge variant={getStatusBadge(t.priority).variant}>{getStatusBadge(t.priority).label}</Badge>
+          <span className={cn('text-xs', isOverdue(t) ? 'text-danger-600 font-medium' : 'text-surface-500')}>
+            {new Date(t.due_date + 'T00:00:00').toLocaleDateString()}
+            {isOverdue(t) && ' • Overdue'}
+          </span>
+          {t.customer_id && <span className="text-xs text-surface-400">{customerName(t.customer_id)}</span>}
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-surface-400 shrink-0" />
+    </div>
   )
 
   return (
@@ -306,6 +350,17 @@ export function TasksPage() {
           <div className="p-6 space-y-4">
             <Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" />
           </div>
+        ) : loadError ? (
+          <EmptyState
+            icon={<AlertTriangle className="h-6 w-6" />}
+            title="Couldn't load tasks"
+            description="We hit a problem loading your data. Check your connection and try again."
+            action={
+              <Button icon={<RotateCw className="h-4 w-4" />} onClick={() => loadData()}>
+                Retry
+              </Button>
+            }
+          />
         ) : view === 'board' ? (
           <div className="overflow-x-auto">
             <div className="flex gap-4 p-4 w-max min-w-full">
@@ -371,6 +426,8 @@ export function TasksPage() {
               onSort={handleSort}
               sortBy={sortBy}
               sortDir={sortDir}
+              mobileCardRender={mobileCardRender}
+              compact={getPreferences().compactLayout}
               emptyState={
                 <EmptyState
                   icon={<ClipboardList className="h-6 w-6" />}
@@ -394,6 +451,7 @@ export function TasksPage() {
         loading={saving}
         customerOptions={customers}
         defaultCustomerId={editing ? undefined : defaultCustomerId}
+        mobileBottomSheet
       />
     </div>
   )

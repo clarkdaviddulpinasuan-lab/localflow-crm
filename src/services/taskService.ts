@@ -1,5 +1,6 @@
 import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import { logActivity } from '@/services/activityService'
 import type { Task, PaginatedResponse } from '@/types'
 import type { QueryParams } from '@/utils/query'
@@ -34,7 +35,7 @@ async function listFromSupabase(params: QueryParams<Task> = {}): Promise<Paginat
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load tasks'))
   return paginate((data as Task[]) ?? [], count ?? 0, page, perPage)
 }
@@ -44,7 +45,7 @@ export async function listTasks(params: QueryParams<Task> = {}): Promise<Paginat
 }
 
 export async function getTask(id: string): Promise<Task | undefined> {
-  const { data, error } = await supabase.from('tasks').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withRetry(() => supabase.from('tasks').select('*').eq('id', id).maybeSingle())
   if (error) throw new Error(messageFromError(error, 'Failed to load task'))
   return (data as Task) ?? undefined
 }

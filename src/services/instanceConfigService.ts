@@ -1,5 +1,6 @@
 import { getCurrentBusinessId, messageFromError } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import type { InstanceConfig } from '@/types'
 
 export const INSTANCE_CONFIG_KEY = 'instance_config'
@@ -27,12 +28,14 @@ export function mergeInstanceConfig(raw: unknown): InstanceConfig {
 
 export async function getInstanceConfig(): Promise<InstanceConfig> {
   const businessId = await getCurrentBusinessId()
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('business_id', businessId)
-    .eq('key', INSTANCE_CONFIG_KEY)
-    .maybeSingle()
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('settings')
+      .select('value')
+      .eq('business_id', businessId)
+      .eq('key', INSTANCE_CONFIG_KEY)
+      .maybeSingle()
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to load instance configuration.'))
   if (!data?.value) return DEFAULT_INSTANCE_CONFIG
   try {
@@ -67,4 +70,5 @@ export async function saveInstanceConfig(config: InstanceConfig): Promise<void> 
     })
     if (error) throw new Error(messageFromError(error, 'Failed to save instance configuration.'))
   }
+  window.dispatchEvent(new CustomEvent('localflow:branding-changed'))
 }

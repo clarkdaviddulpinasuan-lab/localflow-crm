@@ -4,6 +4,7 @@ import { Waves } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
 import { useAuth } from '@/contexts/AuthContext'
+import { acceptInvite, INVITE_STORAGE_KEY } from '@/services/settingsService'
 
 interface LocationState {
   from?: { pathname?: string }
@@ -19,6 +20,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const from = (location.state as LocationState)?.from?.pathname ?? '/'
+  const inviteToken =
+    new URLSearchParams(location.search).get('invite') ?? sessionStorage.getItem(INVITE_STORAGE_KEY)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -27,6 +30,17 @@ export function LoginPage() {
 
     try {
       await signIn(email, password)
+      if (inviteToken) {
+        sessionStorage.removeItem(INVITE_STORAGE_KEY)
+        try {
+          await acceptInvite(inviteToken)
+          navigate('/', { replace: true })
+        } catch (err) {
+          setError(`Signed in, but the invitation could not be accepted: ${err instanceof Error ? err.message : 'unknown error'}`)
+          navigate(from, { replace: true })
+        }
+        return
+      }
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in. Please try again.')

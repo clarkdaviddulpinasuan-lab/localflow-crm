@@ -54,19 +54,6 @@ describe('DateRangePicker', () => {
     expect(last.end).toBeNull()
   })
 
-  it('reset clears the selection back to the placeholder', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    render(<DateRangePicker initialMonth="2025-06-10" onChange={onChange} />)
-    await user.click(screen.getByRole('button', { name: '10' }))
-    await user.click(screen.getByRole('button', { name: '20' }))
-    await user.click(screen.getByRole('button', { name: 'Reset' }))
-    const last = onChange.mock.calls[onChange.mock.calls.length - 1][0]
-    expect(last.start).toBeNull()
-    expect(last.end).toBeNull()
-    expect(screen.getByText('Start Date → End Date')).toBeInTheDocument()
-  })
-
   it('displays the selected range in the header', async () => {
     const user = userEvent.setup()
     render(<DateRangePicker initialMonth="2025-06-10" />)

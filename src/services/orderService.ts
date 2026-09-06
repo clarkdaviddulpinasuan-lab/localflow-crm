@@ -1,5 +1,6 @@
 import { paginate, notFound, messageFromError, getCurrentBusinessId } from '@/lib/dataClient'
 import { supabase } from '@/lib/supabase'
+import { withRetry } from '@/lib/withRetry'
 import { recalcCustomerStats } from '@/services/customerService'
 import { logActivity } from '@/services/activityService'
 import type { Order, PaginatedResponse } from '@/types'
@@ -44,7 +45,7 @@ async function listFromSupabase(params: QueryParams<Order> = {}): Promise<Pagina
   const from = (page - 1) * perPage
   query = query.range(from, from + perPage - 1)
 
-  const { data, count, error } = await query
+  const { data, count, error } = await withRetry(() => query)
   if (error) throw new Error(messageFromError(error, 'Failed to load orders'))
   return paginate((data as Order[]) ?? [], count ?? 0, page, perPage)
 }
@@ -54,20 +55,22 @@ export async function listOrders(params: QueryParams<Order> = {}): Promise<Pagin
 }
 
 export async function getOrder(id: string): Promise<Order | undefined> {
-  const { data, error } = await supabase.from('orders').select('*').eq('id', id).maybeSingle()
+  const { data, error } = await withRetry(() => supabase.from('orders').select('*').eq('id', id).maybeSingle())
   if (error) throw new Error(messageFromError(error, 'Failed to load order'))
   return (data as Order) ?? undefined
 }
 
 export async function nextOrderNumber(): Promise<string> {
   const year = new Date().getFullYear()
-  const { data, error } = await supabase
-    .from('orders')
-    .select('order_number')
-    .ilike('order_number', `ORD-${year}-%`)
-    .order('order_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const { data, error } = await withRetry(() =>
+    supabase
+      .from('orders')
+      .select('order_number')
+      .ilike('order_number', `ORD-${year}-%`)
+      .order('order_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  )
   if (error) throw new Error(messageFromError(error, 'Failed to generate order number'))
 
   let next = 1
@@ -115,9 +118,15 @@ export async function createOrder(
 }
 
 export async function updateOrder(id: string, input: Partial<Order>): Promise<Order> {
+  // A cleared date input arrives as '', which Postgres rejects for a date
+  // column. Match createOrder and store the absence as NULL.
+  const payload: Partial<Order> = { ...input }
+  if ('start_date' in payload) payload.start_date = payload.start_date || null
+  if ('end_date' in payload) payload.end_date = payload.end_date || null
+
   const { data, error } = await supabase
     .from('orders')
-    .update(input)
+    .update(payload)
     .eq('id', id)
     .select()
     .maybeSingle()

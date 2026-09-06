@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout'
 
 // Real credentials are required in production from VITE_SUPABASE_URL /
 // VITE_SUPABASE_ANON_KEY.
@@ -16,4 +17,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // respects Row Level Security. The full relational schema lives in
 // supabase/migrations/001_init.sql and the generated types are documented in
 // src/types/database.ts.
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithTimeout(15_000) },
+})

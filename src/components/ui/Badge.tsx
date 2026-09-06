@@ -11,11 +11,11 @@ interface BadgeProps {
 
 const variantStyles = {
   default: 'bg-surface-100 text-surface-700',
-  primary: 'bg-primary-100 text-primary-700',
-  success: 'bg-success-100 text-success-700',
-  warning: 'bg-warning-100 text-warning-700',
-  danger: 'bg-danger-100 text-danger-700',
-  info: 'bg-info-100 text-info-700',
+  primary: 'bg-[#ede9fe] text-[#6a5ce0]',
+  success: 'bg-success-50 text-success-700',
+  warning: 'bg-warning-50 text-warning-700',
+  danger: 'bg-danger-50 text-danger-700',
+  info: 'bg-info-50 text-info-700',
 }
 
 const dotStyles = {
